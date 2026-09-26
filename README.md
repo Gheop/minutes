@@ -44,7 +44,7 @@ It needs PipeWire with `parec` and `pacat`, `ffmpeg` with libopus, GTK 4 and lib
 
 ## Preview during the call
 
-While Minutes records, it writes a preview of the transcript a few seconds behind the call: in the window under the meters, and in the top bar when you click the indicator. It finds speech on what has been heard so far, gives each batch to whisper on its own and does not tell voices on one side apart, so it is rougher than the transcript made at the end. It writes once about 8 seconds of speech have ended, or after 10 seconds, so it runs some ten seconds behind. Why a live transcript as good as the final one was not reached is measured on the `live-sim` branch, in `bench/LIVE.md`.
+While Minutes records, it writes a preview of the transcript a few seconds behind the call: in the window under the meters, and in the top bar when you click the indicator. It finds speech on what has been heard so far, gives each batch to whisper on its own and does not tell voices on one side apart, so it is rougher than the transcript made at the end. It looks twice a second, writes each stretch of speech once it has ended, and cuts someone talking on at a pause after five seconds: replaying a two-minute call at its own pace, it ran 3.9 s behind the speech (median), 6.6 s at most. Why a live transcript as good as the final one was not reached is measured on the `live-sim` branch, in `bench/LIVE.md`.
 
 When you stop, the preview is saved at once as `transcript-preview.md` in the meeting folder, to copy or open while the real transcript is made, from the whole recording as before. That one replaces nothing: the preview stays in the folder.
 
@@ -70,7 +70,7 @@ A Bluetooth headset such as AirPods only gives its microphone once an app switch
 
 ## Call detection
 
-While Minutes runs, it looks at the PipeWire graph every three seconds. An app that both takes the microphone and plays sound for ten seconds is in a call: Teams, Meet in a browser, Zoom, without Minutes knowing any of them. A video (sound out only) or a voice memo (microphone only) is not. Minutes then shows a notification with a Record button, and reminds you to tell the others first; it never starts on its own. When a call it records ends, it offers to stop.
+While Minutes runs, it looks at the PipeWire graph every three seconds. An app that both takes the microphone and plays sound for ten seconds is in a call: Teams, Meet in a browser, Zoom, without Minutes knowing any of them. A video (sound out only) or a voice memo (microphone only) is not. Minutes then shows a notification with a Record button, and reminds you to tell the others first; it never starts on its own. When the call it records ends, it stops and says so: after about fifteen seconds without the call's sound, or within two seconds of leaving a Teams call when it reads Teams (`teams_debug_port`).
 
 ## GNOME Shell extension
 
@@ -116,6 +116,12 @@ fix = "Okafur => Okafor"
 MIT, like the project it comes from. See [LICENSE](LICENSE).
 
 ## Changelog
+
+### v0.5.0 — A faster preview, and stopping when the call ends (2026-09-26)
+
+- The preview runs about 4 seconds behind the call instead of 10 to 20: it looks twice a second and cuts someone talking on at a pause
+- The recording stops by itself when the call ends, within two seconds of leaving a Teams call
+- With Teams, your name and the other person's are found even when the call view hides your profile picture
 
 ### v0.4.0 — Mute your microphone, here or in Teams (2026-09-26)
 
