@@ -161,8 +161,11 @@ fn run(
                         .take(5)
                         .map(|l| l.text.trim().to_lowercase())
                         .collect();
-                    let new: Vec<Segment> =
-                        new.into_iter().filter(|l| !recent.contains(&l.text.trim().to_lowercase())).collect();
+                    let new: Vec<Segment> = new
+                        .into_iter()
+                        .filter(|l| !recent.contains(&l.text.trim().to_lowercase()))
+                        .filter(|l| !crate::transcribe::is_hallucination(&l.text))
+                        .collect();
                     done[side] = ready.last().map_or(done[side], |r| r.end);
                     for line in &new {
                         earlier[side].push(' ');

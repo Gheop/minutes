@@ -662,7 +662,13 @@ pub fn transcribe(
         let loading = crate::models::find()
             .is_some()
             .then(|| scope.spawn(move || load_whisper(&quiet, abort)));
-        let local = voices(&mic, &mic_regions, events, abort);
+        // `alone_at_mic = true`: your side is one person, you, however your
+        // voice changes as you move or the room's sound mixes in.
+        let local = if crate::models::config_value("alone_at_mic").as_deref() == Some("true") {
+            Ok(Vec::new())
+        } else {
+            voices(&mic, &mic_regions, events, abort)
+        };
         let remote = voices(&computer, &computer_regions, events, abort);
         let context = match loading {
             Some(loading) => {
@@ -722,7 +728,7 @@ pub fn transcribe(
     }
     emit(events, Event::Progress(1.0));
     Ok(Transcript {
-        segments: crate::glossary::apply(interleave(segments)),
+        segments: crate::glossary::apply(drop_hallucinations(interleave(segments))),
         language: if language == "auto" {
             detected.unwrap_or_else(|| "unknown".into())
         } else {
@@ -735,6 +741,36 @@ pub fn transcribe(
 /// The sentences of both sides in the order they were said, joined into
 /// paragraphs per speaker. A sentence of yours that repeats what the other
 /// side said at the same moment is their voice leaking into your mic, and goes.
+/// Lines whisper writes when there is nothing to hear, from the subtitles it
+/// learnt on: a line that says only one of these was not said.
+const HALLUCINATIONS: [&str; 12] = [
+    "sous-titrage société radio-canada",
+    "sous-titrage st' 501",
+    "sous-titres réalisés par la communauté d'amara.org",
+    "sous-titres réalisés para la communauté d'amara.org",
+    "sous-titres fait par la communauté d'amara.org",
+    "merci d'avoir regardé cette vidéo",
+    "merci d'avoir regardé",
+    "abonnez-vous",
+    "thanks for watching",
+    "thank you for watching",
+    "subtitles by the amara.org community",
+    "please subscribe",
+];
+
+pub(crate) fn is_hallucination(text: &str) -> bool {
+    let text = text
+        .trim()
+        .trim_matches(|c: char| !c.is_alphanumeric())
+        .to_lowercase()
+        .replace('’', "'");
+    !text.is_empty() && HALLUCINATIONS.iter().any(|h| text == *h)
+}
+
+fn drop_hallucinations(segments: Vec<Segment>) -> Vec<Segment> {
+    segments.into_iter().filter(|s| !is_hallucination(&s.text)).collect()
+}
+
 fn interleave(mut sentences: Vec<Segment>) -> Vec<Segment> {
     let is_local = |speaker: &str| {
         crate::meeting::side_of(speaker)
@@ -904,7 +940,7 @@ fn whisper_pass(
     )?;
     emit(events, Event::Progress(1.0));
     Ok(Transcript {
-        segments: crate::glossary::apply(segments),
+        segments: crate::glossary::apply(drop_hallucinations(segments)),
         language: if language == "auto" {
             detected.unwrap_or_else(|| "unknown".into())
         } else {
@@ -1524,6 +1560,16 @@ fn usage() -> glib::ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn whispers_subtitle_credits_are_not_speech() {
+        assert!(is_hallucination("Sous-titrage Société Radio-Canada"));
+        assert!(is_hallucination(" Sous-titres réalisés par la communauté d’Amara.org "));
+        assert!(is_hallucination("Thanks for watching!"));
+        // Said in a sentence, it was said.
+        assert!(!is_hallucination("Merci d'avoir regardé le devis, on en reparle demain."));
+        assert!(!is_hallucination("Oui."));
+    }
 
     #[test]
     fn downsampling_in_pieces_gives_the_same_samples() {
