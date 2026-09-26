@@ -1,0 +1,8 @@
+# GitHub's own actions are pinned to their major version, which they keep
+# compatible; anything from elsewhere is pinned to a commit.
+rules:
+  unpinned-uses:
+    config:
+      policies:
+        "actions/*": ref-pin
+        "*": hash-pin
