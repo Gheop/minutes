@@ -4,7 +4,9 @@ A meeting recorder and transcriber for GNOME. It records your microphone and wha
 
 No bot joins the call and no audio leaves your computer. It works with Teams, Meet, Zoom or anything else that plays sound, because it listens to your devices, not to the meeting service.
 
-> **Status: early.** The recording and transcription engine works and is tested. The GNOME app, the Shell extension and the call detection described below are being written; today the program still carries the interface it was forked from.
+> **Status: early.** The engine records, transcribes and tells speakers apart, and is tested. The GNOME app records, transcribes and shows the transcript; renaming speakers, playback, preferences, the Shell extension and call detection are still to come.
+
+<p align="center"><img src="docs/screenshots/ready.webp" alt="Minutes ready to record: the meeting name, the language, the level of your microphone and of the computer audio, and the Record button" width="480">&nbsp;<img src="docs/screenshots/transcript.webp" alt="A transcript in Minutes: each paragraph with its speaker and time, the meetings listed on the left" width="480"></p>
 
 ## Where it comes from
 
@@ -18,16 +20,30 @@ What Minutes changes:
 - **Real names for the other side**, taken from the meeting app where it exposes them (Teams first), instead of "Remote 1" and "Remote 2".
 - **GPU transcription on NVIDIA cards** through CUDA, and a glossary for names and jargon whisper gets wrong.
 
-## Build
-
-For now, the same as the engine it comes from:
+## Build and run
 
 ```bash
-cargo build --release                           # CPU
-CUDAARCHS=86 cargo build --release --features cuda   # NVIDIA GPU; set your card's compute capability
+cargo run --release -p minutes                                  # CPU
+CUDAARCHS=86 cargo run --release -p minutes --features cuda     # NVIDIA GPU; set your card's compute capability
 ```
 
-It needs PipeWire with `parec` and `pacat`, `ffmpeg` with libopus, GTK 4 and libadwaita 1.6 or newer, and Rust and CMake to build. The CUDA build needs the CUDA toolkit with `nvcc` on the `PATH`.
+It needs PipeWire with `parec` and `pacat`, `ffmpeg` with libopus, GTK 4 and libadwaita 1.6 or newer, gettext, and Rust and CMake to build. The CUDA build needs the CUDA toolkit with `nvcc` on the `PATH`, recent enough for your GCC.
+
+`minutes <meeting folder>` opens a meeting. `minutes transcribe <mic> <computer>` and `minutes transcribe-file <audio>` print a transcript as Markdown without opening a window.
+
+## Layout
+
+- `engine/`: recording, transcription, speakers and meeting folders, without GTK, so it runs and is tested without a display. `engine/src/session.rs` is one meeting from Start to transcript.
+- `app/`: the GNOME app (GTK 4, libadwaita, translations in `app/po/`).
+- `legacy/`: the interface Minutes was forked from, kept until the new one does everything it did. `bench/run.py` still runs its binary.
+- `bench/`: transcript quality (`run.py`, with thresholds) and timing (`perf.py`); `PERF.md` has the numbers.
+
+## Testing
+
+```bash
+cargo test --workspace --release        # the window test needs a display, and is skipped without one
+bench/run.py --ami --check              # transcript and speaker quality against the thresholds
+```
 
 ## Configuration
 
@@ -44,3 +60,15 @@ fix = "Okafur => Okafor"
 ## License
 
 MIT, like the project it comes from. See [LICENSE](LICENSE).
+
+## Changelog
+
+### v0.1.0 — A GNOME app on the engine of omarchy-meeting-recorder (2026-09-26)
+
+- New GNOME interface in GTK 4 and libadwaita: the meetings on the left; getting ready, recording, writing the transcript and reading it on the right
+- In English and French
+- GPU transcription on NVIDIA cards with the `cuda` feature
+- `prompt` and `fix` in the config for names and words whisper gets wrong
+- Speakers are found only where someone speaks: a call is transcribed 15 to 30 % faster, with the same quality
+- The whisper model loads while the speakers are found
+- No more "unknown language" warning when nothing was said
