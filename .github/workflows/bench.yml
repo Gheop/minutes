@@ -26,6 +26,34 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # What needs no build, back in a minute or two, next to the rest.
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Install the checkers
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq gjs gettext desktop-file-utils appstream
+
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: What the top bar shows
+        run: gjs -m extension/tests/status.test.js
+
+      - name: Translations
+        run: |
+          for po in app/po/*.po extension/po/*.po; do
+            msgfmt --check --statistics -o /dev/null "$po"
+          done
+
+      - name: Launcher and software centre data
+        run: |
+          desktop-file-validate app/data/io.github.gheop.Minutes.desktop
+          appstreamcli validate --no-net --explain app/data/io.github.gheop.Minutes.metainfo.xml
+
   build:
     runs-on: ubuntu-latest
     container: archlinux:latest
