@@ -1,0 +1,8 @@
+.minutes-indicator-recording {
+    color: #e01b24;
+}
+
+.minutes-indicator-label {
+    font-feature-settings: "tnum";
+    padding-left: 4px;
+}

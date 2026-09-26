@@ -1,0 +1,9 @@
+{
+  "uuid": "minutes@gheop.github",
+  "name": "Minutes",
+  "description": "Shows in the top bar when Minutes records or writes a transcript, with the time and controls.",
+  "shell-version": ["48", "49", "50"],
+  "url": "https://github.com/Gheop/minutes",
+  "gettext-domain": "minutes-extension",
+  "version-name": "0.1.0"
+}

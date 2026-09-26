@@ -4,7 +4,7 @@ A meeting recorder and transcriber for GNOME. It records your microphone and wha
 
 No bot joins the call and no audio leaves your computer. It works with Teams, Meet, Zoom or anything else that plays sound, because it listens to your devices, not to the meeting service.
 
-> **Status: early.** The engine records, transcribes and tells speakers apart, and is tested. The GNOME app records, transcribes and shows the transcript; renaming speakers, playback, preferences, the Shell extension and call detection are still to come.
+> **Status: early.** The engine records, transcribes and tells speakers apart, and is tested. The GNOME app records, transcribes and shows the transcript; a Shell extension shows it in the top bar. Renaming speakers, playback, preferences and call detection are still to come.
 
 <p align="center"><img src="docs/screenshots/ready.webp" alt="Minutes ready to record: the meeting name, the language, the level of your microphone and of the computer audio, and the Record button" width="480">&nbsp;<img src="docs/screenshots/transcript.webp" alt="A transcript in Minutes: each paragraph with its speaker and time, the meetings listed on the left" width="480"></p>
 
@@ -31,17 +31,29 @@ It needs PipeWire with `parec` and `pacat`, `ffmpeg` with libopus, GTK 4 and lib
 
 `minutes <meeting folder>` opens a meeting. `minutes transcribe <mic> <computer>` and `minutes transcribe-file <audio>` print a transcript as Markdown without opening a window.
 
+## GNOME Shell extension
+
+`extension/` shows in the top bar while Minutes records, is paused or writes a transcript: a red dot and the time, with a menu to pause, stop or open Minutes. It stays hidden the rest of the time. It reads Minutes' state over D-Bus (the `status` action of the app), so it needs nothing but Minutes running.
+
+```bash
+extension/build.sh --install                  # then log out and in
+gnome-extensions enable minutes@gheop.github
+```
+
 ## Layout
 
 - `engine/`: recording, transcription, speakers and meeting folders, without GTK, so it runs and is tested without a display. `engine/src/session.rs` is one meeting from Start to transcript.
 - `app/`: the GNOME app (GTK 4, libadwaita, translations in `app/po/`).
 - `legacy/`: the interface Minutes was forked from, kept until the new one does everything it did. `bench/run.py` still runs its binary.
+- `extension/`: the GNOME Shell extension; `status.js` is what it shows for each state, apart from the Shell so it can be tested.
 - `bench/`: transcript quality (`run.py`, with thresholds) and timing (`perf.py`); `PERF.md` has the numbers.
 
 ## Testing
 
 ```bash
 cargo test --workspace --release        # the window test needs a display, and is skipped without one
+gjs -m extension/tests/status.test.js   # what the top bar shows
+extension/tests/shell-smoke.sh          # loads the extension into a GNOME Shell with no screen
 bench/run.py --ami --check              # transcript and speaker quality against the thresholds
 ```
 
@@ -67,6 +79,7 @@ MIT, like the project it comes from. See [LICENSE](LICENSE).
 
 - New GNOME interface in GTK 4 and libadwaita: the meetings on the left; getting ready, recording, writing the transcript and reading it on the right
 - In English and French
+- A GNOME Shell extension shows the recording in the top bar, with pause and stop, and a notification says when the transcript is ready
 - GPU transcription on NVIDIA cards with the `cuda` feature
 - `prompt` and `fix` in the config for names and words whisper gets wrong
 - Speakers are found only where someone speaks: a call is transcribed 15 to 30 % faster, with the same quality
