@@ -12,7 +12,7 @@ Whole ES2004a call (17 min 29 s), one run, CUDA build:
 | Loading the whisper model | 2 s | 0.4 % |
 | Transcribing (whisper on the GPU) | 193 s | 39 % |
 
-Total 8 min 15 s, largest RSS 1.27 GB, largest VRAM 2.2 GB, GPU busy 23 % of the time on average: it waits while the speakers are found.
+Total 8 min 15 s (with browsers open; the same run on a quiet machine takes 4 min 35 s), largest RSS 1.27 GB, largest VRAM 2.2 GB, GPU busy 23 % of the time on average: it waits while the speakers are found.
 
 ## Measurement
 
@@ -30,3 +30,7 @@ Total 8 min 15 s, largest RSS 1.27 GB, largest VRAM 2.2 GB, GPU busy 23 % of the
 | 2 | Each side is diarized over its whole length, silences included; on the mic everything but your own voice is zeroed, yet still goes through the model. Giving it only the speech regions, glued like for whisper, should cut the stage by the share of silence | `transcribe.rs` | Stage 30.5 s → 14.8 s. Same scores on every bench case and on ES2004a; on IS1009a, a meeting never used for tuning, the call scores go up (side 32.3 → 34.7 %, person 69.4 → 73.1 %) and the time down (59.8 → 48.0 s) | −26 % (60.6 → 44.9 s, ±0.3 %) | +0.8 % | Kept |
 | 3 | The whisper model (1.6 GB) is loaded only once the speakers are found, though loading is mostly reading and uploading to the GPU; loading it meanwhile should take its 3.1 s off the critical path | `transcribe.rs` | Loading disappears from the path; finding speakers gets 0.9 s slower while the model is read (shared CPU and memory), so 1.8 s of the 3.1 s is won. Not done when the model still has to be downloaded, so the download keeps its progress bar. Same scores everywhere | −4.0 % (45.0 → 43.2 s, ±0.4 %) | +0.1 % | Kept |
 | 4 | Whisper (GPU) waits for both sides' speakers (CPU); transcribing the first side while the second side's speakers are found should overlap the two | `transcribe.rs` | No change: 43.3 s either way. The sides go longest first (its language counts for both), so the side overlapped is the mic, whose speakers take 3–4 s, and whisper's own CPU threads compete for that time. The last two runs of both binaries were 10 s slower when wireplumber restarted; the first eight differ by 0.2 s | 0 % | +3.5 % | Reverted |
+
+## Whole meeting
+
+`bench/perf.py bench/bin/base bench/bin/h3 --runs 3 --minutes 0` (ES2004a, 17 min 29 s): 274.8 s ± 0.5 % before, 233.9 s ± 0.1 % after (−15 %). Finding speakers 109.6 → 70.8 s, transcribing 161.1 → 162.4 s, largest RSS 1247 → 1249 MB. Finding speakers costs the same per minute of audio on 5 and on 17 minutes (6.1 and 6.3 s): it grows in a straight line, the laptop does not slow down with heat.
