@@ -267,6 +267,20 @@ impl MinutesWindow {
         });
     }
 
+    /// The call being recorded has ended: stop, and say so.
+    fn call_over(&self, name: &str) {
+        let Some(app) = self.application() else {
+            return;
+        };
+        if self.imp().recording.borrow().is_none() {
+            return;
+        }
+        self.stop();
+        let notification = gio::Notification::new(&gettext("Recording stopped"));
+        notification.set_body(Some(&gettext("The call in %s ended; the transcript is being written.").replace("%s", name)));
+        app.send_notification(Some("call"), &notification);
+    }
+
     fn call_changed(&self, change: Change) {
         let Some(app) = self.application() else {
             return;
@@ -282,12 +296,7 @@ impl MinutesWindow {
                 notification.add_button(&gettext("Record"), "app.record");
                 app.send_notification(Some("call"), &notification);
             }
-            Change::Ended(_, name) if recording => {
-                let notification =
-                    gio::Notification::new(&gettext("The call in %s ended").replace("%s", &name));
-                notification.add_button(&gettext("Stop Recording"), "app.stop");
-                app.send_notification(Some("call"), &notification);
-            }
+            Change::Ended(_, name) if recording => self.call_over(&name),
             Change::Ended(..) => app.withdraw_notification("call"),
             Change::Started(..) => {}
         }
@@ -423,7 +432,9 @@ impl MinutesWindow {
             return;
         }
         imp.muted_here.set(false);
-        *imp.teams.borrow_mut() = TeamsSeen::default();
+        // Your name carries over from one call to the next.
+        let me = imp.teams.borrow().me.clone();
+        *imp.teams.borrow_mut() = TeamsSeen { me, ..TeamsSeen::default() };
         self.apply_mute();
         self.start_preview(&staging, &note.language);
         *imp.recording.borrow_mut() = Some(Recording {
@@ -711,6 +722,8 @@ impl MinutesWindow {
         };
         let weak = self.downgrade();
         glib::spawn_future_local(async move {
+            // Reads in a row showing Teams out of the call, after it was in one.
+            let (mut was_in_call, mut out) = (false, 0);
             loop {
                 let snapshot = gio::spawn_blocking(move || teams::snapshot(port)).await.ok().flatten();
                 let Some(win) = weak.upgrade() else {
@@ -719,15 +732,31 @@ impl MinutesWindow {
                 if win.imp().recording.borrow().is_none() {
                     return;
                 }
+                // Teams no longer in the call it was in, three reads in a row
+                // (a page redrawn for a moment is not a call left): stop.
+                // Unreachable Teams proves nothing and changes nothing.
+                match &snapshot {
+                    Some(s) if s.in_call => (was_in_call, out) = (true, 0),
+                    Some(_) if was_in_call => out += 1,
+                    _ => {}
+                }
+                if out >= 3 {
+                    win.call_over("Teams");
+                    return;
+                }
                 if let Some(snapshot) = snapshot.filter(|s| s.in_call) {
                     let changed = {
                         let mut seen = win.imp().teams.borrow_mut();
                         let before = (seen.muted, seen.me.clone(), seen.others.len());
                         seen.muted = snapshot.muted;
-                        if snapshot.me.is_some() {
-                            seen.me = snapshot.me.clone();
+                        if let Some(me) = snapshot.me() {
+                            seen.me = Some(me.to_owned());
                         }
-                        seen.others.extend(snapshot.others().into_iter().map(|p| p.name.clone()));
+                        seen.others.extend(snapshot.others());
+                        // Once your name is known, it is no other.
+                        if let Some(me) = seen.me.clone() {
+                            seen.others.remove(&me);
+                        }
                         before != (seen.muted, seen.me.clone(), seen.others.len())
                     };
                     if changed {

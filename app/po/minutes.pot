@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: minutes\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-26 17:18+0200\n"
+"POT-Creation-Date: 2026-09-26 17:31+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -30,7 +30,7 @@ msgstr ""
 msgid "Minutes"
 msgstr ""
 
-#: app/src/window.ui:43 app/src/window.ui:99 app/src/window.rs:380
+#: app/src/window.ui:43 app/src/window.ui:99 app/src/window.rs:389
 msgid "New Recording"
 msgstr ""
 
@@ -84,16 +84,16 @@ msgstr ""
 msgid "Computer Audio"
 msgstr ""
 
-#: app/src/window.ui:200 app/src/window.rs:439 app/src/window.rs:474
-#: app/src/window.rs:685
+#: app/src/window.ui:200 app/src/window.rs:450 app/src/window.rs:485
+#: app/src/window.rs:696
 msgid "Recording"
 msgstr ""
 
-#: app/src/window.ui:240 app/src/window.rs:438 app/src/window.rs:472
+#: app/src/window.ui:240 app/src/window.rs:449 app/src/window.rs:483
 msgid "_Pause"
 msgstr ""
 
-#: app/src/window.ui:250 app/src/window.rs:680
+#: app/src/window.ui:250 app/src/window.rs:691
 msgid "_Mute My Microphone"
 msgstr ""
 
@@ -135,155 +135,155 @@ msgstr ""
 msgid "Stop the recording before closing"
 msgstr ""
 
-#: app/src/window.rs:278
-msgid "Call in %s"
+#: app/src/window.rs:279
+msgid "Recording stopped"
 msgstr ""
 
 #: app/src/window.rs:280
+msgid "The call in %s ended; the transcript is being written."
+msgstr ""
+
+#: app/src/window.rs:292
+msgid "Call in %s"
+msgstr ""
+
+#: app/src/window.rs:294
 msgid "Record it with Minutes? Tell the others first."
 msgstr ""
 
-#: app/src/window.rs:282
+#: app/src/window.rs:296
 msgid "Record"
 msgstr ""
 
-#: app/src/window.rs:287
-msgid "The call in %s ended"
-msgstr ""
-
-#: app/src/window.rs:288
-msgid "Stop Recording"
-msgstr ""
-
-#: app/src/window.rs:402
+#: app/src/window.rs:411
 msgid "Meeting %H:%M"
 msgstr ""
 
-#: app/src/window.rs:403
+#: app/src/window.rs:412
 msgid "Meeting"
 msgstr ""
 
-#: app/src/window.rs:422
+#: app/src/window.rs:431
 msgid "Could not start recording"
 msgstr ""
 
-#: app/src/window.rs:472
+#: app/src/window.rs:483
 msgid "_Resume"
 msgstr ""
 
-#: app/src/window.rs:474
+#: app/src/window.rs:485
 msgid "Paused"
 msgstr ""
 
-#: app/src/window.rs:497
+#: app/src/window.rs:508
 msgid "Saving the audio"
 msgstr ""
 
-#: app/src/window.rs:517
+#: app/src/window.rs:528
 msgid "Transcript cancelled; the audio is kept"
 msgstr ""
 
-#: app/src/window.rs:521
+#: app/src/window.rs:532
 msgid "Could not write the transcript"
 msgstr ""
 
-#: app/src/window.rs:634
+#: app/src/window.rs:645
 msgid "This meeting could not be read"
 msgstr ""
 
-#: app/src/window.rs:645
+#: app/src/window.rs:656
 msgid "Nobody was heard in this meeting."
 msgstr ""
 
-#: app/src/window.rs:658
+#: app/src/window.rs:669
 msgid "You"
 msgstr ""
 
-#: app/src/window.rs:659
+#: app/src/window.rs:670
 msgid "Others"
 msgstr ""
 
-#: app/src/window.rs:678
+#: app/src/window.rs:689
 msgid "_Unmute My Microphone"
 msgstr ""
 
-#: app/src/window.rs:687
+#: app/src/window.rs:698
 msgid "Recording, your microphone muted"
 msgstr ""
 
-#: app/src/window.rs:689
+#: app/src/window.rs:700
 msgid "Recording, your microphone muted as in Teams"
 msgstr ""
 
-#: app/src/window.rs:809
+#: app/src/window.rs:838
 msgid "preview"
 msgstr ""
 
-#: app/src/window.rs:823
+#: app/src/window.rs:852
 msgid "Preview copied"
 msgstr ""
 
-#: app/src/window.rs:847
+#: app/src/window.rs:876
 msgid "Transcript ready"
 msgstr ""
 
-#: app/src/window.rs:858
+#: app/src/window.rs:887
 msgid "Transcript copied"
 msgstr ""
 
-#: app/src/window.rs:921
+#: app/src/window.rs:950
 msgid "Loading the audio"
 msgstr ""
 
-#: app/src/window.rs:922
+#: app/src/window.rs:951
 msgid "Telling the voices apart"
 msgstr ""
 
-#: app/src/window.rs:923
+#: app/src/window.rs:952
 msgid "Loading the speech model"
 msgstr ""
 
-#: app/src/window.rs:924
+#: app/src/window.rs:953
 msgid "Transcribing"
 msgstr ""
 
-#: app/src/window.rs:925
+#: app/src/window.rs:954
 msgid "Downloading the speech model"
 msgstr ""
 
-#: app/src/window.rs:926
+#: app/src/window.rs:955
 msgid "Downloading the speaker model"
 msgstr ""
 
-#: app/src/window.rs:933
+#: app/src/window.rs:962
 msgid "Detect Automatically"
 msgstr ""
 
-#: app/src/window.rs:934
+#: app/src/window.rs:963
 msgid "English"
 msgstr ""
 
-#: app/src/window.rs:935
+#: app/src/window.rs:964
 msgid "French"
 msgstr ""
 
-#: app/src/window.rs:936
+#: app/src/window.rs:965
 msgid "Dutch"
 msgstr ""
 
-#: app/src/window.rs:937
+#: app/src/window.rs:966
 msgid "German"
 msgstr ""
 
-#: app/src/window.rs:938
+#: app/src/window.rs:967
 msgid "Spanish"
 msgstr ""
 
-#: app/src/window.rs:939
+#: app/src/window.rs:968
 msgid "Italian"
 msgstr ""
 
-#: app/src/window.rs:940
+#: app/src/window.rs:969
 msgid "Portuguese"
 msgstr ""
 
