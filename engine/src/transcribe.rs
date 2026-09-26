@@ -534,10 +534,6 @@ pub fn download(
 }
 
 // ---------------------------------------------------------------------------
-// Transcription
-
-/// Transcribes the meeting. `language` is a whisper code or "auto".
-// ---------------------------------------------------------------------------
 // The preview while a call goes on (see `live.rs`)
 
 /// 48 kHz to whisper's 16 kHz a piece at a time, giving the same samples as
@@ -641,6 +637,10 @@ pub(crate) fn load_preview_whisper(model: &Path) -> Result<WhisperContext, Strin
         .map_err(|e| format!("could not load the model {}: {e}", model.display()))
 }
 
+// ---------------------------------------------------------------------------
+// Transcription
+
+/// Transcribes the meeting. `language` is a whisper code or "auto".
 pub fn transcribe(
     mic: &[f32],
     computer: &[f32],
@@ -1037,6 +1037,7 @@ struct Word {
     segment: usize,
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_whisper(
     context: &WhisperContext,
     glued: &Glued,
