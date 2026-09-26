@@ -537,6 +537,197 @@ pub fn download(
 // Transcription
 
 /// Transcribes the meeting. `language` is a whisper code or "auto".
+// ---------------------------------------------------------------------------
+// Transcribing while the call goes on, simulated
+//
+// `transcribe` sees the whole call at once. Done live, every decision could
+// only use what has been heard so far, plus a short look ahead. This replays a
+// finished recording that way, so the two transcripts can be compared before
+// anything live is built: `MINUTES_LIVE_SIM=<seconds>` makes `transcribe`
+// take this path, whisper getting the speech in batches of about that many
+// seconds as the stretches end (0: every stretch on its own).
+
+/// How far ahead a live decision may look: the delay accepted.
+const LOOKAHEAD: usize = WHISPER_RATE * 2;
+
+/// The 30 ms frame levels of a track.
+fn frame_levels(track: &[f32]) -> Vec<f32> {
+    track.chunks(FRAME).map(rms).collect()
+}
+
+/// The gain `mix` would give each frame, knowing only the past (and
+/// `LOOKAHEAD`): updated once a second from the level heard so far.
+fn causal_gains(levels: &[f32]) -> Vec<f32> {
+    const TARGET: f32 = 0.1;
+    let ahead = LOOKAHEAD / FRAME;
+    let second = WHISPER_RATE / FRAME;
+    let mut gains = vec![1.0; levels.len()];
+    let mut gain = 1.0;
+    for i in 0..levels.len() {
+        if i % second == 0 {
+            let mut known: Vec<f32> = levels[..(i + ahead).min(levels.len())].to_vec();
+            known.sort_by(f32::total_cmp);
+            let level = known[known.len() * 95 / 100];
+            gain = if level < 0.003 { 1.0 } else { (TARGET / level).clamp(0.25, 8.0) };
+        }
+        gains[i] = gain;
+    }
+    gains
+}
+
+/// Frame levels after the causal gain, as `transcribe` measures them on the mixed track.
+fn causal_levels(track: &[f32]) -> Vec<f32> {
+    let levels = frame_levels(track);
+    let gains = causal_gains(&levels);
+    levels.iter().zip(&gains).map(|(l, g)| (l * g).min(1.0)).collect()
+}
+
+/// `active_frames` with only the past (and `LOOKAHEAD`) known at each frame:
+/// the noise floor is updated once a second from what has been heard.
+fn causal_active_frames(levels: &[f32], frames: usize) -> Vec<bool> {
+    let ahead = LOOKAHEAD / FRAME;
+    let second = WHISPER_RATE / FRAME;
+    let mut active = vec![false; frames];
+    let mut threshold = 0.002f32;
+    for i in 0..levels.len().min(frames) {
+        if i % second == 0 {
+            let mut known: Vec<f32> = levels[..(i + ahead).min(levels.len())].to_vec();
+            known.sort_by(f32::total_cmp);
+            threshold = (known[known.len() / 10] * 4.0).max(0.002);
+        }
+        active[i] = levels[i] >= threshold;
+    }
+    active
+}
+
+/// `own_speech_regions` from causal activity: the echo test and the short
+/// runs are local already.
+fn causal_own_speech_regions(mic: &[f32], computer: &[f32]) -> Vec<Region> {
+    const AROUND: usize = 3;
+    const RUN: usize = 3;
+    let frames = mic.len().div_ceil(FRAME);
+    let (own, other) = (causal_levels(mic), causal_levels(computer));
+    let mut active = causal_active_frames(&own, frames);
+    for i in 0..frames {
+        let loudest = other
+            .get(i.saturating_sub(AROUND)..(i + AROUND + 1).min(other.len()))
+            .unwrap_or(&[])
+            .iter()
+            .fold(0.0f32, |m, v| m.max(*v));
+        if own.get(i).copied().unwrap_or(0.0) * 2.0 < loudest {
+            active[i] = false;
+        }
+    }
+    let mut i = 0;
+    while i < frames {
+        if !active[i] {
+            i += 1;
+            continue;
+        }
+        let start = i;
+        while i < frames && active[i] {
+            i += 1;
+        }
+        if i - start < RUN {
+            active[start..i].iter_mut().for_each(|a| *a = false);
+        }
+    }
+    regions_from(&active, mic.len())
+}
+
+/// The track as whisper gets it live: each stretch brought to speaking level
+/// with the gain known when that stretch ended, as `mix` does with the gain
+/// of the whole call.
+fn causally_levelled(track: &[f32], regions: &[Region]) -> Vec<f32> {
+    const TARGET: f32 = 0.1;
+    let levels = frame_levels(track);
+    let mut out = vec![0.0; track.len()];
+    for region in regions {
+        let known = &levels[..((region.end + LOOKAHEAD) / FRAME).min(levels.len())];
+        let mut sorted = known.to_vec();
+        sorted.sort_by(f32::total_cmp);
+        let level = sorted.get(sorted.len() * 95 / 100).copied().unwrap_or(0.0);
+        let gain = if level < 0.003 { 1.0 } else { (TARGET / level).clamp(0.25, 8.0) };
+        for i in region.start..region.end.min(track.len()) {
+            out[i] = soft_clip(track[i] * gain);
+        }
+    }
+    out
+}
+
+/// Groups the stretches, in order, into batches of at least `batch_secs` of
+/// speech: whisper gets a batch once its last stretch has ended.
+fn batches(regions: &[Region], batch_secs: f64) -> Vec<Vec<Region>> {
+    let min = (batch_secs * WHISPER_RATE as f64) as usize;
+    let mut out: Vec<Vec<Region>> = Vec::new();
+    let mut current: Vec<Region> = Vec::new();
+    let mut length = 0;
+    for region in regions {
+        current.push(*region);
+        length += region.end - region.start;
+        if length >= min {
+            out.push(std::mem::take(&mut current));
+            length = 0;
+        }
+    }
+    if !current.is_empty() {
+        out.push(current);
+    }
+    out
+}
+
+fn transcribe_live_sim(
+    mic: &[f32],
+    computer: &[f32],
+    language: &str,
+    batch_secs: f64,
+    events: &Events,
+    abort: &Abort,
+) -> Result<Transcript, String> {
+    let duration_secs = (mic.len().max(computer.len()) / WHISPER_RATE) as i64;
+    let mic_regions = causal_own_speech_regions(mic, computer);
+    let computer_regions = {
+        let frames = computer.len().div_ceil(FRAME);
+        regions_from(&causal_active_frames(&causal_levels(computer), frames), computer.len())
+    };
+    let mic = causally_levelled(mic, &mic_regions);
+    let computer = causally_levelled(computer, &computer_regions);
+    let local = voices(&mic, &mic_regions, events, abort)?;
+    let remote = voices(&computer, &computer_regions, events, abort)?;
+    let context = load_whisper(events, abort)?;
+    let mut language = language.to_owned();
+    let mut detected = None;
+    let mut segments = Vec::new();
+    for (track, regions, speakers) in [
+        (&mic, &mic_regions, Speakers::Side("You", local)),
+        (&computer, &computer_regions, Speakers::Side("Remote", remote)),
+    ] {
+        let mut earlier = String::new();
+        for batch in batches(regions, batch_secs) {
+            let (lines, found) = side_pass(
+                &context, track, &batch, &speakers, &language, (0.0, 1.0), false, &earlier, events, abort,
+            )?;
+            if language == "auto"
+                && let Some(found) = found
+            {
+                language = found.clone();
+                detected = Some(found);
+            }
+            for line in &lines {
+                earlier.push(' ');
+                earlier.push_str(&line.text);
+            }
+            segments.extend(lines);
+        }
+    }
+    emit(events, Event::Progress(1.0));
+    Ok(Transcript {
+        segments: crate::glossary::apply(interleave(segments)),
+        language: if language == "auto" { detected.unwrap_or_else(|| "unknown".into()) } else { language },
+        duration_secs,
+    })
+}
+
 pub fn transcribe(
     mic: &[f32],
     computer: &[f32],
@@ -544,6 +735,9 @@ pub fn transcribe(
     events: &Events,
     abort: &Abort,
 ) -> Result<Transcript, String> {
+    if let Some(batch_secs) = std::env::var("MINUTES_LIVE_SIM").ok().and_then(|v| v.parse().ok()) {
+        return transcribe_live_sim(mic, computer, language, batch_secs, events, abort);
+    }
     let duration_secs = (mic.len().max(computer.len()) / WHISPER_RATE) as i64;
     let empty = |language: &str| Transcript {
         segments: Vec::new(),
@@ -625,6 +819,7 @@ pub fn transcribe(
             &language,
             (done, done + share),
             false,
+            "",
             events,
             abort,
         )?;
@@ -814,6 +1009,7 @@ fn whisper_pass(
         language,
         (0.0, 1.0),
         true,
+        "",
         events,
         abort,
     )?;
@@ -863,13 +1059,14 @@ fn side_pass(
     language: &str,
     progress: (f64, f64),
     paragraphs: bool,
+    earlier: &str,
     events: &Events,
     abort: &Abort,
 ) -> Result<(Vec<Segment>, Option<String>), String> {
     let glued = Glued::new(track, regions);
     emit(events, Event::Stage("Transcribing".into()));
     let (words, detected) =
-        run_whisper(context, &glued, speakers, language, progress, events, abort)?;
+        run_whisper(context, &glued, speakers, language, earlier, progress, events, abort)?;
     Ok((
         phrases(&words, &glued, speakers, track, paragraphs),
         detected,
@@ -892,6 +1089,7 @@ fn run_whisper(
     glued: &Glued,
     speakers: &Speakers,
     language: &str,
+    earlier: &str,
     progress: (f64, f64),
     events: &Events,
     abort: &Abort,
@@ -899,7 +1097,15 @@ fn run_whisper(
     let mut state = context.create_state().map_err(|e| e.to_string())?;
     // Names and jargon whisper would otherwise misspell. Whisper only reads it
     // for its first window; the `fix` lines of the glossary cover the rest.
-    let prompt = crate::models::config_value("prompt");
+    // What was said just before goes after it, as whisper's own context would
+    // have been had it heard everything in one go; whisper keeps the end of a
+    // prompt that is too long.
+    let tail = earlier.char_indices().rev().nth(600).map_or(earlier, |(i, _)| &earlier[i..]);
+    let prompt = match (crate::models::config_value("prompt"), tail.trim()) {
+        (prompt, "") => prompt,
+        (Some(prompt), tail) => Some(format!("{prompt} {tail}")),
+        (None, tail) => Some(tail.to_owned()),
+    };
     let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
     if let Some(prompt) = &prompt {
         params.set_initial_prompt(prompt);
