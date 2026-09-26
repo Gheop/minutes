@@ -20,6 +20,17 @@ What Minutes changes:
 - **Real names for the other side**, taken from the meeting app where it exposes them (Teams first), instead of "Remote 1" and "Remote 2".
 - **GPU transcription on NVIDIA cards** through CUDA, and a glossary for names and jargon whisper gets wrong.
 
+## Install
+
+```bash
+./install.sh                                   # for your user, in ~/.local
+CUDAARCHS=86 ./install.sh --features cuda      # whisper on an NVIDIA GPU
+./install.sh --autostart                       # also start in the background at login
+./install.sh --uninstall
+```
+
+It installs the app with its launcher, icon and French translation, and the Shell extension, which shows up after you log out and back in. With `--autostart`, Minutes starts at login without a window and without touching the microphone: it only watches for calls, to offer recording them. The microphone is used while the window is open (for the meters) or a recording goes on; closing the window hides it and lets the microphone go.
+
 ## Build and run
 
 ```bash
@@ -91,6 +102,13 @@ fix = "Okafur => Okafor"
 MIT, like the project it comes from. See [LICENSE](LICENSE).
 
 ## Changelog
+
+### v0.3.0 — Installed, and waiting for calls in the background (2026-09-26)
+
+- `install.sh` installs Minutes for your user, with its launcher, icon, translation and Shell extension
+- `--autostart` starts Minutes at login in the background, to notice calls without a window
+- The microphone is only in use while the window is open or a recording goes on
+- Closing the window of a Minutes started in the background hides it; call detection goes on
 
 ### v0.2.0 — A preview of the transcript during the call (2026-09-26)
 

@@ -25,6 +25,11 @@
     <control>pointing</control>
   </supports>
   <releases>
+    <release version="0.3.0" date="2026-09-26">
+      <description>
+        <p>Minutes installs for your user and can start at login in the background, to notice calls; the microphone is only used while the window is open or a recording goes on.</p>
+      </description>
+    </release>
     <release version="0.2.0" date="2026-09-26">
       <description>
         <p>A preview of the transcript is written during the call, shown in the window and in the top bar, and saved at once when the call ends; the final transcript is still made from the whole recording.</p>
