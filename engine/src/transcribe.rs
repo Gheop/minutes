@@ -312,37 +312,7 @@ struct Region {
 const FRAME: usize = WHISPER_RATE * 30 / 1000;
 
 /// Frames of `track` with sound in them: above four times its own noise floor.
-/// The quietest level counted as speech on a call's raw tracks, -72 dBFS:
-/// fixed, so that finding speech does not depend on how loud the whole call
-/// turns out to be, which is only known once it is over.
-const SPEECH_FLOOR: f32 = 0.00025;
-
-/// How loud the speech in `levels` (30 ms frame levels) is: the 90th
-/// percentile of the frames that count as speech. It does not depend on how
-/// much of the time someone talks, so it is known after a few seconds of
-/// speech; 0 before a second of it.
-fn speech_level(levels: &[f32]) -> f32 {
-    let mut sorted = levels.to_vec();
-    sorted.sort_by(f32::total_cmp);
-    let Some(&noise) = sorted.get(sorted.len() / 10) else {
-        return 0.0;
-    };
-    let threshold = (noise * 4.0).max(SPEECH_FLOOR);
-    let speech: Vec<f32> = sorted.into_iter().filter(|l| *l >= threshold).collect();
-    if speech.len() < WHISPER_RATE / FRAME {
-        return 0.0;
-    }
-    speech[speech.len() * 90 / 100]
-}
-
-/// Frame levels relative to the track's speech level, so the mic and the
-/// computer audio can be compared whatever their volume.
-fn relative_levels(levels: &[f32], speech: f32) -> Vec<f32> {
-    let speech = if speech > 0.0 { speech } else { 1.0 };
-    levels.iter().map(|l| l / speech).collect()
-}
-
-fn active_frames(track: &[f32], frames: usize, floor: f32) -> Vec<bool> {
+fn active_frames(track: &[f32], frames: usize) -> Vec<bool> {
     let energies: Vec<f32> = track.chunks(FRAME).map(rms).collect();
     let mut active = vec![false; frames];
     if energies.is_empty() {
@@ -350,8 +320,8 @@ fn active_frames(track: &[f32], frames: usize, floor: f32) -> Vec<bool> {
     }
     let mut sorted = energies.clone();
     sorted.sort_by(f32::total_cmp);
-    let noise = sorted[sorted.len() / 10];
-    let threshold = (noise * 4.0).max(floor);
+    let floor = sorted[sorted.len() / 10];
+    let threshold = (floor * 4.0).max(0.002);
     for (i, energy) in energies.iter().enumerate().take(frames) {
         if *energy >= threshold {
             active[i] = true;
@@ -362,13 +332,13 @@ fn active_frames(track: &[f32], frames: usize, floor: f32) -> Vec<bool> {
 
 /// Finds the parts with sound in them, by frame energy against the noise floor.
 /// Generous padding keeps word edges intact.
-fn speech_regions(tracks: &[&[f32]], len: usize, floor: f32) -> Vec<Region> {
+fn speech_regions(tracks: &[&[f32]], len: usize) -> Vec<Region> {
     let frames = len.div_ceil(FRAME);
     // Each track gets its own threshold: steady sound on one side (music, a
     // fan, a noisy line) must not hide the speech on the other side.
     let mut active = vec![false; frames];
     for track in tracks {
-        for (a, on) in active.iter_mut().zip(active_frames(track, frames, floor)) {
+        for (a, on) in active.iter_mut().zip(active_frames(track, frames)) {
             *a |= on;
         }
     }
@@ -381,9 +351,6 @@ fn speech_regions(tracks: &[&[f32]], len: usize, floor: f32) -> Vec<Region> {
 /// half as loud as the loudest computer audio around it (echo trails behind),
 /// and only in runs of a few frames, so the gaps between their words do not
 /// let the echo through either.
-/// Your own speech on the mic: speech on its raw track, except where the
-/// computer audio, each measured against its own speech level, is much
-/// louder: that is the other side leaking in.
 fn own_speech_regions(mic: &[f32], computer: &[f32]) -> Vec<Region> {
     const AROUND: usize = 3;
     const RUN: usize = 3;
@@ -394,11 +361,7 @@ fn own_speech_regions(mic: &[f32], computer: &[f32]) -> Vec<Region> {
             .collect()
     };
     let (own, other) = (level(mic), level(computer));
-    let (own, other) = (
-        relative_levels(&own, speech_level(&own)),
-        relative_levels(&other, speech_level(&other)),
-    );
-    let mut active = active_frames(mic, frames, SPEECH_FLOOR);
+    let mut active = active_frames(mic, frames);
     for (i, a) in active.iter_mut().enumerate() {
         let loudest = other[i.saturating_sub(AROUND)..(i + AROUND + 1).min(frames)]
             .iter()
@@ -592,20 +555,31 @@ fn frame_levels(track: &[f32]) -> Vec<f32> {
     track.chunks(FRAME).map(rms).collect()
 }
 
-/// `relative_levels` with the speech level known at each frame (and
-/// `LOOKAHEAD`), updated once a second.
-fn causal_relative_levels(track: &[f32]) -> Vec<f32> {
-    let levels = frame_levels(track);
-    let (ahead, second) = (LOOKAHEAD / FRAME, WHISPER_RATE / FRAME);
-    let mut speech = 0.0;
-    let mut out = Vec::with_capacity(levels.len());
-    for (i, level) in levels.iter().enumerate() {
+/// The gain `mix` would give each frame, knowing only the past (and
+/// `LOOKAHEAD`): updated once a second from the level heard so far.
+fn causal_gains(levels: &[f32]) -> Vec<f32> {
+    const TARGET: f32 = 0.1;
+    let ahead = LOOKAHEAD / FRAME;
+    let second = WHISPER_RATE / FRAME;
+    let mut gains = vec![1.0; levels.len()];
+    let mut gain = 1.0;
+    for i in 0..levels.len() {
         if i % second == 0 {
-            speech = speech_level(&levels[..(i + ahead).min(levels.len())]);
+            let mut known: Vec<f32> = levels[..(i + ahead).min(levels.len())].to_vec();
+            known.sort_by(f32::total_cmp);
+            let level = known[known.len() * 95 / 100];
+            gain = if level < 0.003 { 1.0 } else { (TARGET / level).clamp(0.25, 8.0) };
         }
-        out.push(if speech > 0.0 { level / speech } else { *level });
+        gains[i] = gain;
     }
-    out
+    gains
+}
+
+/// Frame levels after the causal gain, as `transcribe` measures them on the mixed track.
+fn causal_levels(track: &[f32]) -> Vec<f32> {
+    let levels = frame_levels(track);
+    let gains = causal_gains(&levels);
+    levels.iter().zip(&gains).map(|(l, g)| (l * g).min(1.0)).collect()
 }
 
 /// `active_frames` with only the past (and `LOOKAHEAD`) known at each frame:
@@ -619,7 +593,7 @@ fn causal_active_frames(levels: &[f32], frames: usize) -> Vec<bool> {
         if i % second == 0 {
             let mut known: Vec<f32> = levels[..(i + ahead).min(levels.len())].to_vec();
             known.sort_by(f32::total_cmp);
-            threshold = (known[known.len() / 10] * 4.0).max(SPEECH_FLOOR);
+            threshold = (known[known.len() / 10] * 4.0).max(0.002);
         }
         active[i] = levels[i] >= threshold;
     }
@@ -632,8 +606,8 @@ fn causal_own_speech_regions(mic: &[f32], computer: &[f32]) -> Vec<Region> {
     const AROUND: usize = 3;
     const RUN: usize = 3;
     let frames = mic.len().div_ceil(FRAME);
-    let (own, other) = (causal_relative_levels(mic), causal_relative_levels(computer));
-    let mut active = causal_active_frames(&frame_levels(mic), frames);
+    let (own, other) = (causal_levels(mic), causal_levels(computer));
+    let mut active = causal_active_frames(&own, frames);
     for i in 0..frames {
         let loudest = other
             .get(i.saturating_sub(AROUND)..(i + AROUND + 1).min(other.len()))
@@ -714,7 +688,7 @@ fn transcribe_live_sim(
     let mic_regions = causal_own_speech_regions(mic, computer);
     let computer_regions = {
         let frames = computer.len().div_ceil(FRAME);
-        regions_from(&causal_active_frames(&frame_levels(computer), frames), computer.len())
+        regions_from(&causal_active_frames(&causal_levels(computer), frames), computer.len())
     };
     let mic = causally_levelled(mic, &mic_regions);
     let computer = causally_levelled(computer, &computer_regions);
@@ -782,10 +756,9 @@ pub fn transcribe(
     // Each side goes through whisper on its own: whisper follows one voice at
     // a time, so two people talking at once, or a song under someone, would
     // otherwise lose the quieter one. The side of a line is then its track.
-    let (mic_raw, computer_raw) = (mic, computer);
     let (mic, computer) = (mix(mic, &[]), mix(computer, &[]));
-    let mic_regions = own_speech_regions(mic_raw, computer_raw);
-    let computer_regions = speech_regions(&[computer_raw], computer.len(), SPEECH_FLOOR);
+    let mic_regions = own_speech_regions(&mic, &computer);
+    let computer_regions = speech_regions(&[&computer], computer.len());
     if mic_regions.is_empty() && computer_regions.is_empty() {
         emit(events, Event::Progress(1.0));
         return Ok(empty(language));
@@ -995,7 +968,7 @@ pub fn transcribe_single(
         return Ok(empty());
     }
     let level = mix(track, &[]);
-    let regions = speech_regions(&[track], level.len(), 0.002);
+    let regions = speech_regions(&[track], level.len());
     if regions.is_empty() {
         emit(events, Event::Progress(1.0));
         return Ok(empty());
@@ -1649,27 +1622,6 @@ fn usage() -> glib::ExitCode {
 mod tests {
     use super::*;
 
-    /// The raw-level threshold `active_frames` works out on each track:
-    /// `MINUTES_DIAG_TRACKS="a.ogg b.wav" cargo test --release -- --ignored --nocapture thresholds_per_track`
-    #[test]
-    #[ignore]
-    fn thresholds_per_track() {
-        let Ok(paths) = std::env::var("MINUTES_DIAG_TRACKS") else {
-            return;
-        };
-        println!("{:48} {:>8} {:>8} {:>6} {:>10} {:>10}", "track", "p10", "p95", "gain", "threshold", "4 x p10");
-        for path in paths.split_whitespace() {
-            let track = load_track(std::path::Path::new(path)).unwrap();
-            let mut levels = frame_levels(&track);
-            levels.sort_by(f32::total_cmp);
-            let (p10, p95) = (levels[levels.len() / 10], levels[levels.len() * 95 / 100]);
-            let gain = if p95 < 0.003 { 1.0 } else { (0.1 / p95).clamp(0.25, 8.0) };
-            let threshold = (p10 * gain * 4.0).max(0.002) / gain;
-            let name: String = path.rsplit('/').take(2).collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>().join("/");
-            println!("{name:48} {p10:>8.5} {p95:>8.4} {gain:>6.2} {threshold:>10.5} {:>10.5}", p10 * 4.0);
-        }
-    }
-
     /// Where live and offline speech detection part on a real call:
     /// `MINUTES_DIAG_MIC=mic.wav MINUTES_DIAG_COMPUTER=computer.wav cargo test --release -- --ignored --nocapture regions_live_vs_offline`
     #[test]
@@ -1689,11 +1641,11 @@ mod tests {
             on
         };
         let (mic_m, computer_m) = (mix(&mic, &[]), mix(&computer, &[]));
-        let offline = flags(&own_speech_regions(&mic, &computer));
+        let offline = flags(&own_speech_regions(&mic_m, &computer_m));
         let live = flags(&causal_own_speech_regions(&mic, &computer));
         // The noise threshold alone, before the echo test.
-        let offline_raw = active_frames(&mic, frames, SPEECH_FLOOR);
-        let live_raw = causal_active_frames(&frame_levels(&mic), frames);
+        let offline_raw = active_frames(&mic_m, frames);
+        let live_raw = causal_active_frames(&causal_levels(&mic), frames);
         let minute = WHISPER_RATE * 60 / FRAME;
         let secs = |n: usize| n as f64 * FRAME as f64 / WHISPER_RATE as f64;
         println!("minute  offline  live  missed  extra   | threshold only: offline  live  missed");
@@ -1713,7 +1665,7 @@ mod tests {
         let mut sorted = levels.clone();
         sorted.sort_by(f32::total_cmp);
         println!("offline mic threshold {:.4}", (sorted[sorted.len() / 10] * 4.0).max(0.002));
-        let causal = frame_levels(&mic);
+        let causal = causal_levels(&mic);
         for at in [1usize, 5, 30, 60, 300] {
             let i = (at * WHISPER_RATE / FRAME).min(causal.len());
             let mut known = causal[..i].to_vec();
