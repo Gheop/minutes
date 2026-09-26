@@ -56,6 +56,14 @@ It needs whisper on a GPU (the `cuda` or `vulkan` build). On the CPU the usual m
 live_model = "small"
 ```
 
+## Alone at your microphone
+
+Minutes tells apart the voices on each side, so that two people sharing your microphone come out as two. When you are alone at it, that can split your own voice in two as you move or as the room's sound mixes in; say so in the config and your side is one person, you:
+
+```toml
+alone_at_mic = true
+```
+
 ## Muting your microphone
 
 The **Mute My Microphone** button (in the window and in the top bar menu) records silence on your side while it is on: the track keeps its length, so the two sides stay in step. What you say while muted stays out of the preview and the transcript.
@@ -118,6 +126,13 @@ fix = "Okafur => Okafor"
 MIT, like the project it comes from. See [LICENSE](LICENSE).
 
 ## Changelog
+
+### v0.6.1 — One voice at your microphone, names without the Participants panel (2026-09-26)
+
+- `alone_at_mic = true` keeps your side as one person instead of splitting your voice in two
+- With Teams, the other person's name is found on the stage when the Participants panel is closed
+- Lines whisper invents on silence, like "Sous-titrage Société Radio-Canada", are left out
+- The preview saved at Stop uses the names Teams gave
 
 ### v0.6.0 — The preview follows the speech (2026-09-26)
 

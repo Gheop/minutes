@@ -935,7 +935,7 @@ dependencies = [
 
 [[package]]
 name = "minutes"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "async-channel",
  "gettext-rs",
@@ -947,7 +947,7 @@ dependencies = [
 
 [[package]]
 name = "minutes-engine"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "async-channel",
  "glib",
@@ -1060,7 +1060,7 @@ dependencies = [
 
 [[package]]
 name = "omarchy-meeting-recorder"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "async-channel",
  "gtk4",
