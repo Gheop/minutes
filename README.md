@@ -33,7 +33,7 @@ It needs PipeWire with `parec` and `pacat`, `ffmpeg` with libopus, GTK 4 and lib
 
 ## Preview during the call
 
-While Minutes records, it writes a preview of the transcript a few seconds behind the call: in the window under the meters, and in the top bar when you click the indicator. It finds speech on what has been heard so far, gives each batch to whisper on its own and does not tell voices on one side apart, so it is rougher than the transcript made at the end. `bench/LIVE.md` has the measurements of how far behind it stays.
+While Minutes records, it writes a preview of the transcript a few seconds behind the call: in the window under the meters, and in the top bar when you click the indicator. It finds speech on what has been heard so far, gives each batch to whisper on its own and does not tell voices on one side apart, so it is rougher than the transcript made at the end. It writes once about 8 seconds of speech have ended, or after 10 seconds, so it runs some ten seconds behind. Why a live transcript as good as the final one was not reached is measured on the `live-sim` branch, in `bench/LIVE.md`.
 
 When you stop, the preview is saved at once as `transcript-preview.md` in the meeting folder, to copy or open while the real transcript is made, from the whole recording as before. That one replaces nothing: the preview stays in the folder.
 
