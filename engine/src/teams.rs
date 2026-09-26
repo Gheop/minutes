@@ -62,12 +62,20 @@ impl Snapshot {
         }
     }
 
-    /// Everyone in the call but you: the participants less your name when it
-    /// is known, else the people on the stage.
+    /// Everyone in the call but you: from the participants list, which Teams
+    /// only has while its Participants panel is open, else from the people
+    /// on the stage.
     pub fn others(&self) -> Vec<String> {
-        match self.me() {
-            Some(me) => self.participants.iter().filter(|p| p.name != me).map(|p| p.name.clone()).collect(),
-            None => self.tiles.clone(),
+        let me = self.me();
+        let names: Vec<&str> = if self.participants.is_empty() {
+            self.tiles.iter().map(String::as_str).collect()
+        } else {
+            self.participants.iter().map(|p| p.name.as_str()).collect()
+        };
+        match (me, self.participants.is_empty()) {
+            // Without your name, only the stage can tell others from you.
+            (None, false) => self.tiles.clone(),
+            _ => names.into_iter().filter(|n| Some(*n) != me).map(str::to_owned).collect(),
         }
     }
 }
@@ -188,6 +196,16 @@ mod tests {
         value["avatar"] = serde_json::Value::Null;
         let snapshot = parse(&value);
         assert_eq!(snapshot.me, None);
+        assert_eq!(snapshot.me(), Some("Ludovic BENOIT"));
+        assert_eq!(snapshot.others(), ["Théo BENOIT"]);
+    }
+
+    #[test]
+    fn with_the_participants_panel_closed_the_stage_names_the_others() {
+        // Teams only lists the participants while their panel is open.
+        let mut value = call();
+        value["roster"] = serde_json::json!([]);
+        let snapshot = parse(&value);
         assert_eq!(snapshot.me(), Some("Ludovic BENOIT"));
         assert_eq!(snapshot.others(), ["Théo BENOIT"]);
     }
