@@ -11,6 +11,7 @@ use adw::subclass::prelude::*;
 use gettextrs::gettext;
 use gtk::{gio, glib};
 use minutes_engine::audio::{self, Source};
+use minutes_engine::calls::{self, Change, Tracker};
 use minutes_engine::export::Format;
 use minutes_engine::meeting::{self, Manifest};
 use minutes_engine::session::{self, Note};
@@ -82,6 +83,8 @@ mod imp {
         pub abort: RefCell<Option<Abort>>,
         /// The transcript on screen, for Copy.
         pub markdown: RefCell<String>,
+        /// Calls seen in the PipeWire graph, to offer recording them.
+        pub calls: RefCell<Tracker>,
     }
 
     #[glib::object_subclass]
@@ -179,6 +182,64 @@ impl MinutesWindow {
             }
         });
         self.load_meetings();
+        self.watch_calls();
+    }
+
+    /// Looks at the PipeWire graph every few seconds for an app in a call,
+    /// and offers to record it; offers to stop when a call being recorded ends.
+    fn watch_calls(&self) {
+        let weak = self.downgrade();
+        glib::spawn_future_local(async move {
+            loop {
+                let dump = gio::spawn_blocking(|| {
+                    let out = std::process::Command::new("pw-dump").output().ok()?;
+                    serde_json::from_slice::<serde_json::Value>(&out.stdout).ok()
+                })
+                .await
+                .ok()
+                .flatten();
+                let Some(win) = weak.upgrade() else {
+                    return;
+                };
+                let Some(dump) = dump else {
+                    eprintln!("minutes: pw-dump is missing or failed; calls will not be detected");
+                    return;
+                };
+                let now = glib::monotonic_time() as f64 / 1e6;
+                let changes = win.imp().calls.borrow_mut().update(now, &calls::calls_in(&dump));
+                for change in changes {
+                    win.call_changed(change);
+                }
+                drop(win);
+                glib::timeout_future_seconds(3).await;
+            }
+        });
+    }
+
+    fn call_changed(&self, change: Change) {
+        let Some(app) = self.application() else {
+            return;
+        };
+        let recording = self.imp().recording.borrow().is_some();
+        match change {
+            Change::Started(_, name) if !recording => {
+                let notification =
+                    gio::Notification::new(&gettext("Call in %s").replace("%s", &name));
+                notification.set_body(Some(&gettext(
+                    "Record it with Minutes? Tell the others first.",
+                )));
+                notification.add_button(&gettext("Record"), "app.record");
+                app.send_notification(Some("call"), &notification);
+            }
+            Change::Ended(_, name) if recording => {
+                let notification =
+                    gio::Notification::new(&gettext("The call in %s ended").replace("%s", &name));
+                notification.add_button(&gettext("Stop Recording"), "app.stop");
+                app.send_notification(Some("call"), &notification);
+            }
+            Change::Ended(..) => app.withdraw_notification("call"),
+            Change::Started(..) => {}
+        }
     }
 
     /// Tells the outside (the Shell extension, over D-Bus) what Minutes is

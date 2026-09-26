@@ -871,6 +871,7 @@ dependencies = [
  "gtk4",
  "libadwaita",
  "minutes-engine",
+ "serde_json",
 ]
 
 [[package]]
