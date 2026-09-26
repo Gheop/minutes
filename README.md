@@ -44,7 +44,9 @@ It needs PipeWire with `parec` and `pacat`, `ffmpeg` with libopus, GTK 4 and lib
 
 ## Preview during the call
 
-While Minutes records, it writes a preview of the transcript a few seconds behind the call: in the window under the meters, and in the top bar when you click the indicator. It finds speech on what has been heard so far, gives each batch to whisper on its own and does not tell voices on one side apart, so it is rougher than the transcript made at the end. It looks twice a second, writes each stretch of speech once it has ended, and cuts someone talking on at a pause after five seconds: replaying a two-minute call at its own pace, it ran 3.9 s behind the speech (median), 6.6 s at most. Why a live transcript as good as the final one was not reached is measured on the `live-sim` branch, in `bench/LIVE.md`.
+While Minutes records, it writes a preview of the transcript as the call goes on: in the window under the meters, and in the top bar when you click the indicator. What someone is still saying shows greyed, redrawn every second, and turns into a line of its own once they pause. Replaying a two-minute call at its own pace, the grey draft ran a second behind the speech at most (90th percentile), and the finished lines 2.8 s (median).
+
+It is rougher than the transcript made at the end: it finds speech on what has been heard so far, does not tell voices on one side apart, and gives whisper a window fitted to a few seconds of speech with one second try instead of four when a piece decodes badly. A line said again word for word among the last few on its side is dropped, since whisper sometimes gives back the text before it. Why a live transcript as good as the final one was not reached is measured on the `live-sim` branch, in `bench/LIVE.md`.
 
 When you stop, the preview is saved at once as `transcript-preview.md` in the meeting folder, to copy or open while the real transcript is made, from the whole recording as before. That one replaces nothing: the preview stays in the folder.
 
@@ -116,6 +118,12 @@ fix = "Okafur => Okafor"
 MIT, like the project it comes from. See [LICENSE](LICENSE).
 
 ## Changelog
+
+### v0.6.0 — The preview follows the speech (2026-09-26)
+
+- What someone is still saying shows greyed in the preview, a second behind at most, and becomes a line once they pause
+- Finished lines come about 2 to 3 seconds after the sentence ends
+- Whisper runs about five times faster for the preview, and no longer repeats itself in it
 
 ### v0.5.0 — A faster preview, and stopping when the call ends (2026-09-26)
 
