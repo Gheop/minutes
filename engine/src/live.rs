@@ -21,11 +21,14 @@ use crate::transcribe::{
 };
 
 /// Speech waits for this much more of it before whisper gets a batch.
-const BATCH: usize = WHISPER_RATE * 8;
+const BATCH: usize = WHISPER_RATE * 3;
 /// Unless the oldest stretch waiting ended this long ago.
-const MAX_WAIT: usize = WHISPER_RATE * 10;
+const MAX_WAIT: usize = WHISPER_RATE * 4;
 /// A stretch counts as ended when this much has been heard after it.
-const SETTLED: usize = WHISPER_RATE * 2;
+const SETTLED: usize = WHISPER_RATE * 4 / 5;
+/// Someone talking on without a pause: a stretch still going is cut once it
+/// is this long, at its quietest moment, rather than waited for.
+const LONG: usize = WHISPER_RATE * 5;
 
 /// The preview of one recording, running in its own thread.
 pub struct Preview {
@@ -111,7 +114,8 @@ fn run(
     let mut earlier = [String::new(), String::new()];
     let mut written = Vec::new();
     while !stop.load(Ordering::Relaxed) {
-        for _ in 0..20 {
+        // Twice a second: whisper gets a stretch a second or so after it ends.
+        for _ in 0..2 {
             if stop.load(Ordering::Relaxed) {
                 return written;
             }
@@ -132,7 +136,7 @@ fn run(
         .into_iter()
         .enumerate()
         {
-            let ready = ready_batch(regions, done[side], heard);
+            let ready = ready_batch(regions, done[side], heard, track);
             if ready.is_empty() {
                 continue;
             }
@@ -156,18 +160,44 @@ fn run(
 }
 
 /// The stretches after `done` that have ended, when there is enough of them
-/// to be worth a batch or the oldest has waited long enough.
-fn ready_batch(regions: &[Region], done: usize, heard: usize) -> Vec<Region> {
-    let ended: Vec<Region> = regions
+/// to be worth a batch or the oldest has waited long enough; with the part of
+/// a stretch still going that is already long, cut at its quietest moment so
+/// someone talking on does not hold the preview back.
+fn ready_batch(regions: &[Region], done: usize, heard: usize, track: &[f32]) -> Vec<Region> {
+    // What is left of each stretch past `done`.
+    let pending: Vec<Region> = regions
         .iter()
-        .copied()
-        .filter(|r| r.start >= done && r.end + SETTLED <= heard)
+        .filter(|r| r.end > done)
+        .map(|r| Region { start: r.start.max(done), onset: r.onset.max(done), end: r.end })
         .collect();
-    let speech: usize = ended.iter().map(|r| r.end - r.start).sum();
-    match ended.first() {
-        Some(first) if speech >= BATCH || heard - first.end >= MAX_WAIT => ended,
+    let mut ready: Vec<Region> = pending.iter().copied().filter(|r| r.end + SETTLED <= heard).collect();
+    let mut cut = false;
+    if let Some(open) = pending.iter().find(|r| r.end + SETTLED > heard) {
+        let settled = heard.saturating_sub(SETTLED);
+        if settled >= open.start + LONG {
+            let at = quietest(track, open.start + LONG / 2, settled);
+            ready.push(Region { start: open.start, onset: open.onset, end: at });
+            cut = true;
+        }
+    }
+    let speech: usize = ready.iter().map(|r| r.end - r.start).sum();
+    match ready.first() {
+        Some(first) if cut || speech >= BATCH || heard - first.end >= MAX_WAIT => ready,
         _ => Vec::new(),
     }
+}
+
+/// The start of the quietest 30 ms of `track[from..to]`: a pause between words.
+fn quietest(track: &[f32], from: usize, to: usize) -> usize {
+    const FRAME: usize = WHISPER_RATE * 30 / 1000;
+    let to = to.min(track.len());
+    (from..to.saturating_sub(FRAME))
+        .step_by(FRAME)
+        .min_by(|&a, &b| {
+            let energy = |i: usize| track[i..i + FRAME].iter().map(|x| x * x).sum::<f32>();
+            energy(a).total_cmp(&energy(b))
+        })
+        .unwrap_or(to)
 }
 
 #[cfg(test)]
@@ -202,16 +232,20 @@ mod tests {
         let (tx, rx) = async_channel::unbounded();
         let started = std::time::Instant::now();
         let preview = Preview::start(&staging, "en", tx);
-        // A second of audio every 100 ms.
+        // A second of audio every 100 ms, or every second with MINUTES_PREVIEW_SPEED=1.
         let second = 48_000 * 4;
+        let pace = std::env::var("MINUTES_PREVIEW_SPEED").ok().and_then(|s| s.parse::<u64>().ok()).unwrap_or(10);
+        let mut delays = Vec::new();
         let mut written = 0;
         while written < mic.len().max(computer.len()) {
             written = (written + second).min(mic.len().max(computer.len()));
             std::fs::write(&mic_path, &mic[..written.min(mic.len())]).unwrap();
             std::fs::write(&computer_path, &computer[..written.min(computer.len())]).unwrap();
-            std::thread::sleep(std::time::Duration::from_millis(100));
+            std::thread::sleep(std::time::Duration::from_millis(1000 / pace));
             while let Ok(lines) = rx.try_recv() {
                 for line in lines {
+                    // Seconds of audio written since the line ended, in the call's own time.
+                    delays.push(written as f64 / second as f64 - line.end_ms as f64 / 1000.0);
                     println!(
                         "[{:>5.1}s, audio at {:>3}s] {} {:>3}s: {}",
                         started.elapsed().as_secs_f64(),
@@ -227,22 +261,50 @@ mod tests {
         std::thread::sleep(std::time::Duration::from_secs(8));
         let lines = preview.finish();
         println!("{} lines in all", lines.len());
+        if !delays.is_empty() {
+            delays.sort_by(f64::total_cmp);
+            println!(
+                "behind the call: median {:.1} s, 90th percentile {:.1} s, most {:.1} s",
+                delays[delays.len() / 2],
+                delays[delays.len() * 9 / 10],
+                delays[delays.len() - 1]
+            );
+        }
         let _ = std::fs::remove_dir_all(&staging);
         assert!(!lines.is_empty());
     }
 
     #[test]
     fn a_batch_waits_for_enough_speech_or_for_time() {
-        let regions = [region(0.0, 3.0), region(4.0, 7.0), region(8.0, 30.0)];
+        let regions = [region(0.0, 1.0), region(2.0, 3.5), region(5.0, 8.0)];
         let secs = |s: usize| s * WHISPER_RATE;
-        // Two short stretches have ended, 6 s of speech: wait.
-        assert!(ready_batch(&regions, 0, secs(10)).is_empty());
-        // The long one has ended too: 28 s, go.
-        assert_eq!(ready_batch(&regions, 0, secs(33)).len(), 3);
+        let track = vec![0.1; secs(40)];
+        // Two short stretches have ended, 2.5 s of speech: wait.
+        assert!(ready_batch(&regions, 0, secs(4), &track).is_empty());
+        // The third has ended too: go.
+        assert_eq!(ready_batch(&regions, 0, secs(9), &track).len(), 3);
         // After the first two, nothing ended waits.
-        assert!(ready_batch(&regions, secs(7), secs(20)).is_empty());
+        assert!(ready_batch(&regions, secs(4), secs(8), &track).is_empty());
         // A short stretch alone goes once it has waited long enough.
-        assert_eq!(ready_batch(&regions[..1], 0, secs(14)).len(), 1);
+        assert_eq!(ready_batch(&regions[..1], 0, secs(6), &track).len(), 1);
+    }
+
+    #[test]
+    fn someone_talking_on_is_cut_at_a_pause() {
+        let secs = |s: f64| (s * WHISPER_RATE as f64) as usize;
+        // Talking from 0 s on, with a breath at 4 s.
+        let mut track = vec![0.1f32; secs(40.0)];
+        track[secs(4.0)..secs(4.1)].iter_mut().for_each(|x| *x = 0.0);
+        let going = [region(0.0, 7.0)];
+        // Not long enough yet.
+        assert!(ready_batch(&going, 0, secs(5.0), &track).is_empty());
+        // Long enough: the part up to the breath goes.
+        let cut = ready_batch(&going, 0, secs(7.5), &track);
+        assert_eq!(cut.len(), 1);
+        assert!((secs(3.95)..=secs(4.1)).contains(&cut[0].end), "cut at {}", cut[0].end);
+        // The rest starts where the cut was.
+        let rest = ready_batch(&[region(0.0, 12.0)], cut[0].end, secs(20.0), &track);
+        assert_eq!(rest[0].start, cut[0].end);
     }
 
     #[test]
