@@ -34,7 +34,7 @@ jobs:
       CARGO_HOME: /cache/cargo
     steps:
       - name: Install build dependencies
-        run: pacman -Syu --noconfirm --needed base-devel git rust cmake clang gtk4 libadwaita ffmpeg libpulse
+        run: pacman -Syu --noconfirm --needed base-devel git rust cmake clang gtk4 libadwaita ffmpeg libpulse xorg-server-xvfb dbus
 
       - uses: actions/checkout@v7
         with:
@@ -60,8 +60,12 @@ jobs:
       - name: Build
         run: cargo build --release
 
+      # On a virtual screen, so the window test runs instead of skipping.
       - name: Unit tests
-        run: cargo test --release
+        env:
+          MINUTES_REQUIRE_DISPLAY: '1'
+          GDK_BACKEND: x11
+        run: dbus-run-session -- xvfb-run -a cargo test --release
 
       # From main only, once per lock file: pull requests read main's cache,
       # and each push no longer adds a few hundred megabytes of it.
