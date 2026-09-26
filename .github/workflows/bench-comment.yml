@@ -6,6 +6,8 @@ name: Bench comment
 # left behind, as data, and checks that they belong to that pull request.
 
 on:
+  # zizmor: ignore[dangerous-triggers] nothing from the pull request runs here:
+  # its scores are read as data and checked against the commit that was benched.
   workflow_run:
     workflows: [Bench]
     types: [completed]
