@@ -211,7 +211,7 @@ fn run(
             }
         }
         // Once a second, the stretch still going on each side, as a draft.
-        if tick % 2 == 0 {
+        if tick.is_multiple_of(2) {
             for (side, (track, regions, label)) in [
                 (&mic_track, &mic_regions, crate::meeting::DEFAULT_YOU),
                 (
