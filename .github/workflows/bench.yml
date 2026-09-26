@@ -94,6 +94,8 @@ jobs:
           name: bench-transcripts
           path: bench-transcripts
           if-no-files-found: ignore
+          # Long enough to look into a regression.
+          retention-days: 14
 
       - name: Keep the scores for the comment
         if: ${{ always() && github.event_name == 'pull_request' }}
@@ -111,3 +113,5 @@ jobs:
         with:
           name: bench-comment
           path: bench-comment
+          # Read once, by "Bench comment", right after this run.
+          retention-days: 1
