@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: minutes\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-26 08:05+0200\n"
+"POT-Creation-Date: 2026-09-26 08:17+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -26,11 +26,11 @@ msgid "_About Minutes"
 msgstr ""
 
 #: app/src/window.ui:18 app/src/window.ui:35 app/src/main.rs:37
-#: app/src/main.rs:61
+#: app/src/main.rs:134
 msgid "Minutes"
 msgstr ""
 
-#: app/src/window.ui:43 app/src/window.ui:99 app/src/window.rs:221
+#: app/src/window.ui:43 app/src/window.ui:99 app/src/window.rs:247
 msgid "New Recording"
 msgstr ""
 
@@ -60,35 +60,35 @@ msgid ""
 "the transcript on this computer"
 msgstr ""
 
-#: app/src/window.ui:136
-msgid "Meeting Name"
-msgstr ""
-
-#: app/src/window.ui:141
-msgid "Language"
-msgstr ""
-
-#: app/src/window.ui:148
-msgid "Sound"
-msgstr ""
-
-#: app/src/window.ui:151 app/src/window.ui:212
-msgid "Your Microphone"
-msgstr ""
-
-#: app/src/window.ui:162 app/src/window.ui:223
-msgid "Computer Audio"
-msgstr ""
-
-#: app/src/window.ui:175
+#: app/src/window.ui:134
 msgid "_Record"
 msgstr ""
 
-#: app/src/window.ui:200 app/src/window.rs:276 app/src/window.rs:305
+#: app/src/window.ui:148
+msgid "Meeting Name"
+msgstr ""
+
+#: app/src/window.ui:153
+msgid "Language"
+msgstr ""
+
+#: app/src/window.ui:160
+msgid "Sound"
+msgstr ""
+
+#: app/src/window.ui:163 app/src/window.ui:212
+msgid "Your Microphone"
+msgstr ""
+
+#: app/src/window.ui:174 app/src/window.ui:223
+msgid "Computer Audio"
+msgstr ""
+
+#: app/src/window.ui:200 app/src/window.rs:303 app/src/window.rs:338
 msgid "Recording"
 msgstr ""
 
-#: app/src/window.ui:240 app/src/window.rs:275 app/src/window.rs:303
+#: app/src/window.ui:240 app/src/window.rs:302 app/src/window.rs:336
 msgid "_Pause"
 msgstr ""
 
@@ -108,110 +108,114 @@ msgstr ""
 msgid "Stop the recording before closing"
 msgstr ""
 
-#: app/src/window.rs:245
+#: app/src/window.rs:271
 msgid "Meeting %H:%M"
 msgstr ""
 
-#: app/src/window.rs:246
+#: app/src/window.rs:272
 msgid "Meeting"
 msgstr ""
 
-#: app/src/window.rs:265
+#: app/src/window.rs:291
 msgid "Could not start recording"
 msgstr ""
 
-#: app/src/window.rs:303
+#: app/src/window.rs:336
 msgid "_Resume"
 msgstr ""
 
-#: app/src/window.rs:305
+#: app/src/window.rs:338
 msgid "Paused"
 msgstr ""
 
-#: app/src/window.rs:323
+#: app/src/window.rs:356
 msgid "Saving the audio"
 msgstr ""
 
-#: app/src/window.rs:335
+#: app/src/window.rs:373
 msgid "Transcript cancelled; the audio is kept"
 msgstr ""
 
-#: app/src/window.rs:339
+#: app/src/window.rs:377
 msgid "Could not write the transcript"
 msgstr ""
 
-#: app/src/window.rs:436
+#: app/src/window.rs:478
 msgid "This meeting could not be read"
 msgstr ""
 
-#: app/src/window.rs:447
+#: app/src/window.rs:489
 msgid "Nobody was heard in this meeting."
 msgstr ""
 
-#: app/src/window.rs:458
-msgid "Transcript copied"
-msgstr ""
-
-#: app/src/window.rs:517
-msgid "Loading the audio"
+#: app/src/window.rs:507
+msgid "Transcript ready"
 msgstr ""
 
 #: app/src/window.rs:518
+msgid "Transcript copied"
+msgstr ""
+
+#: app/src/window.rs:577
+msgid "Loading the audio"
+msgstr ""
+
+#: app/src/window.rs:578
 msgid "Telling the voices apart"
 msgstr ""
 
-#: app/src/window.rs:519
+#: app/src/window.rs:579
 msgid "Loading the speech model"
 msgstr ""
 
-#: app/src/window.rs:520
+#: app/src/window.rs:580
 msgid "Transcribing"
 msgstr ""
 
-#: app/src/window.rs:521
+#: app/src/window.rs:581
 msgid "Downloading the speech model"
 msgstr ""
 
-#: app/src/window.rs:522
+#: app/src/window.rs:582
 msgid "Downloading the speaker model"
 msgstr ""
 
-#: app/src/window.rs:529
+#: app/src/window.rs:589
 msgid "Detect Automatically"
 msgstr ""
 
-#: app/src/window.rs:530
+#: app/src/window.rs:590
 msgid "English"
 msgstr ""
 
-#: app/src/window.rs:531
+#: app/src/window.rs:591
 msgid "French"
 msgstr ""
 
-#: app/src/window.rs:532
+#: app/src/window.rs:592
 msgid "Dutch"
 msgstr ""
 
-#: app/src/window.rs:533
+#: app/src/window.rs:593
 msgid "German"
 msgstr ""
 
-#: app/src/window.rs:534
+#: app/src/window.rs:594
 msgid "Spanish"
 msgstr ""
 
-#: app/src/window.rs:535
+#: app/src/window.rs:595
 msgid "Italian"
 msgstr ""
 
-#: app/src/window.rs:536
+#: app/src/window.rs:596
 msgid "Portuguese"
 msgstr ""
 
-#: app/src/main.rs:70
+#: app/src/main.rs:143
 msgid "Based on"
 msgstr ""
 
-#: app/src/main.rs:74
+#: app/src/main.rs:147
 msgid "Speech and speakers"
 msgstr ""

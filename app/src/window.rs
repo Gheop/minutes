@@ -181,6 +181,24 @@ impl MinutesWindow {
         self.load_meetings();
     }
 
+    /// Tells the outside (the Shell extension, over D-Bus) what Minutes is
+    /// doing: `app.status` holds (state, seconds, progress). While recording,
+    /// the seconds are the Unix time the recording would have started without
+    /// its pauses, so a clock can run from it; while paused, the time recorded.
+    fn publish(&self, state: &str, seconds: i64, progress: f64) {
+        let Some(action) = self
+            .application()
+            .and_then(|app| app.lookup_action("status"))
+            .and_downcast::<gio::SimpleAction>()
+        else {
+            return;
+        };
+        let status = (state, seconds, progress).to_variant();
+        if action.state().as_ref() != Some(&status) {
+            action.set_state(&status);
+        }
+    }
+
     fn toast(&self, message: &str) {
         self.imp().toasts.add_toast(adw::Toast::new(message));
     }
@@ -279,6 +297,7 @@ impl MinutesWindow {
             before: Duration::ZERO,
             since: Some(Instant::now()),
         });
+        self.publish("recording", glib::real_time() / 1_000_000, 0.0);
         imp.content_page.set_title(&title);
         imp.pause_button.set_label(&gettext("_Pause"));
         imp.recording_page.set_description(Some(&gettext("Recording")));
@@ -307,6 +326,12 @@ impl MinutesWindow {
         };
         mic.set_paused(paused);
         system.set_paused(paused);
+        let recorded = recording.elapsed().as_secs() as i64;
+        if paused {
+            self.publish("paused", recorded, 0.0);
+        } else {
+            self.publish("recording", glib::real_time() / 1_000_000 - recorded, 0.0);
+        }
         imp.pause_button
             .set_label(&if paused { gettext("_Resume") } else { gettext("_Pause") });
         imp.recording_page
@@ -330,15 +355,20 @@ impl MinutesWindow {
         imp.progress.set_fraction(0.0);
         imp.progress.set_text(Some(&gettext("Saving the audio")));
         imp.pages.set_visible_child_name("transcribing");
+        self.publish("transcribing", 0, 0.0);
 
         let win = self.clone();
         glib::spawn_future_local(async move {
             let result = win.finish(recording, abort).await;
             *win.imp().abort.borrow_mut() = None;
             win.set_busy(false);
+            win.publish("idle", 0, 0.0);
             win.load_meetings();
             match result {
-                Ok(dir) => win.show_meeting(&dir),
+                Ok(dir) => {
+                    win.show_meeting(&dir);
+                    win.notify_ready(&dir);
+                }
                 Err(e) if e == CANCELLED => {
                     win.toast(&gettext("Transcript cancelled; the audio is kept"));
                     win.show_ready();
@@ -389,7 +419,11 @@ impl MinutesWindow {
         while let Ok(event) = events_rx.recv().await {
             match event {
                 Event::Stage(stage) => imp.progress.set_text(Some(&stage_label(&stage))),
-                Event::Progress(fraction) => imp.progress.set_fraction(fraction),
+                Event::Progress(fraction) => {
+                    imp.progress.set_fraction(fraction);
+                    // Whole percents: enough for a label, and few D-Bus signals.
+                    self.publish("transcribing", 0, (fraction * 100.0).floor() / 100.0);
+                }
                 Event::Segment(_) => {}
                 Event::Finished => break,
             }
@@ -459,6 +493,24 @@ impl MinutesWindow {
         imp.copy_button.set_visible(true);
         imp.pages.set_visible_child_name("transcript");
         imp.split_view.set_show_content(true);
+    }
+
+    /// A notification when the transcript is ready; clicking it opens the meeting.
+    fn notify_ready(&self, dir: &Path) {
+        let Some(app) = self.application() else {
+            return;
+        };
+        if self.is_active() {
+            return;
+        }
+        let title = meeting::open(dir).map(|(_, m)| m.title).unwrap_or_default();
+        let notification = gio::Notification::new(&gettext("Transcript ready"));
+        notification.set_body(Some(&title));
+        notification.set_default_action_and_target_value(
+            "app.open-meeting",
+            Some(&dir.to_string_lossy().to_variant()),
+        );
+        app.send_notification(Some("transcript-ready"), &notification);
     }
 
     fn copy(&self) {

@@ -57,6 +57,7 @@ fn main() -> glib::ExitCode {
         .activate(|app: &adw::Application, _, _| show_about(app))
         .build();
     app.add_action_entries([about]);
+    add_outside_actions(&app);
     app.set_accels_for_action("win.record", &["<Control>r"]);
     app.set_accels_for_action("win.stop", &["<Control>s"]);
     app.set_accels_for_action("win.pause", &["<Control>p"]);
@@ -64,6 +65,46 @@ fn main() -> glib::ExitCode {
     app.set_accels_for_action("window.close", &["<Control>w"]);
     // GTK would take the engine's arguments for its own.
     app.run_with_args(&args[..1])
+}
+
+/// What the Shell extension and other programs reach over D-Bus, on
+/// `/io/github/gheop/Minutes`: `status`, a state (state, seconds, progress)
+/// that changes as Minutes records and transcribes, and `record`, `pause`,
+/// `stop` and `open-meeting` (a folder) for the window.
+fn add_outside_actions(app: &adw::Application) {
+    let status = gtk::gio::SimpleAction::new_stateful("status", None, &("idle", 0i64, 0.0f64).to_variant());
+    app.add_action(&status);
+    let window = |app: &adw::Application| {
+        app.active_window()
+            .and_downcast::<window::MinutesWindow>()
+            .unwrap_or_else(|| window::MinutesWindow::new(app))
+    };
+    for name in ["record", "pause", "stop"] {
+        let action = gtk::gio::SimpleAction::new(name, None);
+        action.connect_activate(glib::clone!(
+            #[weak]
+            app,
+            move |_, _| {
+                let window = window(&app);
+                window.present();
+                let _ = WidgetExt::activate_action(&window, &format!("win.{name}"), None);
+            }
+        ));
+        app.add_action(&action);
+    }
+    let open = gtk::gio::SimpleAction::new("open-meeting", Some(glib::VariantTy::STRING));
+    open.connect_activate(glib::clone!(
+        #[weak]
+        app,
+        move |_, folder| {
+            let window = window(&app);
+            if let Some(folder) = folder.and_then(|f| f.str()) {
+                window.show_meeting(std::path::Path::new(folder));
+            }
+            window.present();
+        }
+    ));
+    app.add_action(&open);
 }
 
 /// With `MINUTES_SCREENSHOT=file.png`, renders the window into that file once
