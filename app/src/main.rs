@@ -97,14 +97,18 @@ fn main() -> glib::ExitCode {
 /// What the Shell extension and other programs reach over D-Bus, on
 /// `/io/github/gheop/Minutes`: `status`, a state (state, seconds, progress)
 /// that changes as Minutes records and transcribes; `live`, the last lines of
-/// the preview; and `record`, `pause`, `stop`, `copy-preview` and
-/// `open-meeting` (a folder) for the window.
+/// the preview; `mute`, whether you muted your microphone here; and `record`,
+/// `pause`, `stop`, `mute-mic`, `copy-preview` and `open-meeting` (a folder)
+/// for the window.
 fn add_outside_actions(app: &adw::Application) {
     let status = gtk::gio::SimpleAction::new_stateful("status", None, &("idle", 0i64, 0.0f64).to_variant());
     app.add_action(&status);
     // The last lines of the preview while recording: (time, speaker, text).
     let live = gtk::gio::SimpleAction::new_stateful("live", None, &Vec::<(String, String, String)>::new().to_variant());
     app.add_action(&live);
+    // Whether you muted your microphone in Minutes.
+    let mute = gtk::gio::SimpleAction::new_stateful("mute", None, &false.to_variant());
+    app.add_action(&mute);
     // The window may be hidden (Minutes in the background): no active window then.
     let window = |app: &adw::Application| {
         app.windows()
@@ -112,7 +116,7 @@ fn add_outside_actions(app: &adw::Application) {
             .find_map(|w| w.downcast::<window::MinutesWindow>().ok())
             .unwrap_or_else(|| window::MinutesWindow::new(app))
     };
-    for name in ["record", "pause", "stop", "copy-preview"] {
+    for name in ["record", "pause", "stop", "copy-preview", "mute-mic"] {
         let action = gtk::gio::SimpleAction::new(name, None);
         action.connect_activate(glib::clone!(
             #[weak]

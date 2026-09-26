@@ -25,6 +25,11 @@
     <control>pointing</control>
   </supports>
   <releases>
+    <release version="0.4.0" date="2026-09-26">
+      <description>
+        <p>Mute your microphone during a recording, from the window or the top bar; with Teams, Minutes follows your mute button there and names the other person in a call between two.</p>
+      </description>
+    </release>
     <release version="0.3.0" date="2026-09-26">
       <description>
         <p>Minutes installs for your user and can start at login in the background, to notice calls; the microphone is only used while the window is open or a recording goes on.</p>

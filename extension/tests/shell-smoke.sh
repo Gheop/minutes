@@ -9,7 +9,7 @@ here=$(cd "$(dirname "$0")/.." && pwd)
 uuid=minutes@gheop.github
 tmp=$(mktemp -d)
 # The document portal of the test session mounts itself in the runtime dir.
-trap 'fusermount3 -u "$tmp/runtime/doc" 2>/dev/null || fusermount -u "$tmp/runtime/doc" 2>/dev/null || true; rm -rf "$tmp"' EXIT
+trap 'fusermount3 -u "$tmp/runtime/doc" 2>/dev/null || fusermount -u "$tmp/runtime/doc" 2>/dev/null || true; rm -rf "$tmp" 2>/dev/null || { sleep 1; rm -rf "$tmp"; }' EXIT
 
 gnome-extensions pack --force --podir="$here/po" --extra-source=status.js -o "$tmp" "$here/$uuid" >/dev/null
 export XDG_DATA_HOME=$tmp/data XDG_CONFIG_HOME=$tmp/config XDG_CACHE_HOME=$tmp/cache XDG_STATE_HOME=$tmp/state

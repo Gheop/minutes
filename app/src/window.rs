@@ -1,7 +1,8 @@
 //! The main window: the meetings on the left; on the right, getting ready,
 //! recording, writing the transcript, and reading it.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
@@ -16,6 +17,7 @@ use minutes_engine::export::Format;
 use minutes_engine::live::Preview;
 use minutes_engine::meeting::{self, Manifest};
 use minutes_engine::session::{self, Note};
+use minutes_engine::teams;
 use minutes_engine::transcribe::{self, Abort, CANCELLED, Event, LANGUAGES, Segment, Transcript};
 
 /// A recording in progress.
@@ -26,6 +28,24 @@ pub struct Recording {
     before: Duration,
     /// When the current stretch started; None while paused.
     since: Option<Instant>,
+}
+
+/// What Teams showed during a recording.
+#[derive(Default)]
+pub struct TeamsSeen {
+    /// You are muted in Teams now.
+    pub muted: bool,
+    /// Your name in Teams.
+    pub me: Option<String>,
+    /// Everyone else seen in the call.
+    pub others: BTreeSet<String>,
+}
+
+impl TeamsSeen {
+    /// The name of the other side, when a single person was there.
+    fn other(&self) -> Option<&str> {
+        (self.others.len() == 1).then(|| self.others.iter().next().map(String::as_str)).flatten()
+    }
 }
 
 impl Recording {
@@ -71,6 +91,8 @@ mod imp {
         #[template_child]
         pub pause_button: TemplateChild<gtk::Button>,
         #[template_child]
+        pub mute_button: TemplateChild<gtk::Button>,
+        #[template_child]
         pub transcribing_page: TemplateChild<adw::StatusPage>,
         #[template_child]
         pub progress: TemplateChild<gtk::ProgressBar>,
@@ -101,6 +123,10 @@ mod imp {
         pub live: RefCell<Vec<Segment>>,
         /// The preview saved at Stop, for Copy and Open.
         pub preview_file: RefCell<Option<PathBuf>>,
+        /// Your microphone muted with the Mute button.
+        pub muted_here: Cell<bool>,
+        /// What Teams showed during this recording.
+        pub teams: RefCell<TeamsSeen>,
     }
 
     #[glib::object_subclass]
@@ -180,6 +206,7 @@ impl MinutesWindow {
             action("new", Self::show_ready),
             action("open-folder", Self::open_folder),
             action("copy-preview", Self::copy_preview),
+            action("mute-mic", Self::toggle_mute),
             action("open-preview", Self::open_preview),
         ]);
         self.set_busy(false);
@@ -317,6 +344,7 @@ impl MinutesWindow {
             ("new", !busy),
             ("pause", recording),
             ("stop", recording),
+            ("mute-mic", recording),
             ("cancel", transcribing),
         ] {
             if let Some(action) = self.lookup_action(name).and_downcast::<gio::SimpleAction>() {
@@ -394,6 +422,9 @@ impl MinutesWindow {
             self.toast(&format!("{}: {e}", gettext("Could not start recording")));
             return;
         }
+        imp.muted_here.set(false);
+        *imp.teams.borrow_mut() = TeamsSeen::default();
+        self.apply_mute();
         self.start_preview(&staging, &note.language);
         *imp.recording.borrow_mut() = Some(Recording {
             staging,
@@ -402,6 +433,7 @@ impl MinutesWindow {
             since: Some(Instant::now()),
         });
         self.publish("recording", glib::real_time() / 1_000_000, 0.0);
+        self.watch_teams();
         imp.content_page.set_title(&title);
         imp.pause_button.set_label(&gettext("_Pause"));
         imp.recording_page.set_description(Some(&gettext("Recording")));
@@ -452,7 +484,9 @@ impl MinutesWindow {
             system.stop_recording();
             mic.set_paused(false);
             system.set_paused(false);
+            mic.set_muted(false);
         }
+        self.publish_mute(false);
         if !self.is_visible() {
             self.release_sources();
         }
@@ -512,7 +546,13 @@ impl MinutesWindow {
             duration_secs: session::raw_duration(&staging),
             format: note.format,
             language: note.language.clone(),
-            speakers: vec![meeting::DEFAULT_YOU.to_owned(), meeting::DEFAULT_REMOTE.to_owned()],
+            speakers: {
+                let seen = self.imp().teams.borrow();
+                vec![
+                    seen.me.clone().unwrap_or_else(|| meeting::DEFAULT_YOU.to_owned()),
+                    seen.other().unwrap_or(meeting::DEFAULT_REMOTE).to_owned(),
+                ]
+            },
             labels: Vec::new(),
             imported: None,
             speaker_count: None,
@@ -611,6 +651,96 @@ impl MinutesWindow {
         imp.split_view.set_show_content(true);
     }
 
+    /// A side's label as the preview shows it: the names Teams gave, when it did.
+    fn side_name(&self, label: &str) -> String {
+        let seen = self.imp().teams.borrow();
+        match label {
+            meeting::DEFAULT_YOU => seen.me.clone().unwrap_or_else(|| gettext("You")),
+            meeting::DEFAULT_REMOTE => seen.other().map_or_else(|| gettext("Others"), str::to_owned),
+            other => other.to_owned(),
+        }
+    }
+
+    fn toggle_mute(&self) {
+        let imp = self.imp();
+        imp.muted_here.set(!imp.muted_here.get());
+        self.apply_mute();
+    }
+
+    /// Silence on your track while you mute it here or in Teams.
+    fn apply_mute(&self) {
+        let imp = self.imp();
+        let muted = imp.muted_here.get() || imp.teams.borrow().muted;
+        if let Some((mic, _)) = imp.sources.borrow().as_ref() {
+            mic.set_muted(muted);
+        }
+        imp.mute_button.set_label(&if imp.muted_here.get() {
+            gettext("_Unmute My Microphone")
+        } else {
+            gettext("_Mute My Microphone")
+        });
+        let paused = imp.recording.borrow().as_ref().is_some_and(|r| r.since.is_none());
+        if imp.recording.borrow().is_some() && !paused {
+            imp.recording_page.set_description(Some(&if !muted {
+                gettext("Recording")
+            } else if imp.muted_here.get() {
+                gettext("Recording, your microphone muted")
+            } else {
+                gettext("Recording, your microphone muted as in Teams")
+            }));
+        }
+        self.publish_mute(imp.muted_here.get());
+    }
+
+    /// `app.mute`: whether you muted your microphone here, for the Shell extension.
+    fn publish_mute(&self, muted: bool) {
+        if let Some(action) = self
+            .application()
+            .and_then(|app| app.lookup_action("mute"))
+            .and_downcast::<gio::SimpleAction>()
+        {
+            action.set_state(&muted.to_variant());
+        }
+    }
+
+    /// While recording, reads Teams twice a second when `teams_debug_port`
+    /// is set: whether you are muted there, and who is in the call.
+    fn watch_teams(&self) {
+        let Some(port) = minutes_engine::models::config_value("teams_debug_port").and_then(|p| p.parse::<u16>().ok()) else {
+            return;
+        };
+        let weak = self.downgrade();
+        glib::spawn_future_local(async move {
+            loop {
+                let snapshot = gio::spawn_blocking(move || teams::snapshot(port)).await.ok().flatten();
+                let Some(win) = weak.upgrade() else {
+                    return;
+                };
+                if win.imp().recording.borrow().is_none() {
+                    return;
+                }
+                if let Some(snapshot) = snapshot.filter(|s| s.in_call) {
+                    let changed = {
+                        let mut seen = win.imp().teams.borrow_mut();
+                        let before = (seen.muted, seen.me.clone(), seen.others.len());
+                        seen.muted = snapshot.muted;
+                        if snapshot.me.is_some() {
+                            seen.me = snapshot.me.clone();
+                        }
+                        seen.others.extend(snapshot.others().into_iter().map(|p| p.name.clone()));
+                        before != (seen.muted, seen.me.clone(), seen.others.len())
+                    };
+                    if changed {
+                        win.apply_mute();
+                        win.publish_live();
+                    }
+                }
+                drop(win);
+                glib::timeout_future(Duration::from_millis(500)).await;
+            }
+        });
+    }
+
     /// Starts the preview of a recording and shows its lines as they come.
     fn start_preview(&self, staging: &Path, language: &str) {
         let imp = self.imp();
@@ -636,7 +766,7 @@ impl MinutesWindow {
         imp.live_group.set_visible(true);
         for line in &lines {
             let time = clock((line.start_ms / 1000).max(0) as u64);
-            imp.live_list.append(&transcript_row(&time, &side_name(&line.speaker), &line.text));
+            imp.live_list.append(&transcript_row(&time, &self.side_name(&line.speaker), &line.text));
         }
         imp.live.borrow_mut().extend(lines);
         self.publish_live();
@@ -659,7 +789,7 @@ impl MinutesWindow {
         let lines: Vec<(String, String, String)> = live
             .iter()
             .skip(live.len().saturating_sub(40))
-            .map(|l| (clock((l.start_ms / 1000).max(0) as u64), side_name(&l.speaker), l.text.clone()))
+            .map(|l| (clock((l.start_ms / 1000).max(0) as u64), self.side_name(&l.speaker), l.text.clone()))
             .collect();
         action.set_state(&lines.to_variant());
     }
@@ -771,14 +901,6 @@ fn transcript_row(time: &str, speaker: &str, text: &str) -> gtk::ListBoxRow {
 /// The preview written during the call, next to the final transcript.
 pub const PREVIEW_FILE: &str = "transcript-preview.md";
 
-/// A side's label as the preview shows it.
-fn side_name(label: &str) -> String {
-    match label {
-        meeting::DEFAULT_YOU => gettext("You"),
-        meeting::DEFAULT_REMOTE => gettext("Others"),
-        other => other.to_owned(),
-    }
-}
 
 /// `mm:ss`, or `h:mm:ss` from an hour on.
 pub fn clock(secs: u64) -> String {

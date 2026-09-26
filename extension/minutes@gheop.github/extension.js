@@ -53,6 +53,8 @@ class MinutesIndicator extends PanelMenu.Button {
         this._lines = [];
 
         this._pauseItem = this.menu.addAction(_('Pause'), () => this._activate('pause'));
+        this._muteItem = this.menu.addAction(_('Mute My Microphone'), () => this._activate('mute-mic'));
+        this._muted = false;
         this._stopItem = this.menu.addAction(_('Stop'), () => this._activate('stop'));
         this._copyItem = this.menu.addAction(_('Copy the Preview'), () => this._activate('copy-preview'));
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
@@ -79,12 +81,16 @@ class MinutesIndicator extends PanelMenu.Button {
                 this._setStatus(state);
             else if (name === 'live')
                 this._setLines(state);
+            else if (name === 'mute')
+                this._setMuted(state);
         });
         this._addedSignal = this._actions.connect('action-added', (_group, name) => {
             if (name === 'status')
                 this._setStatus(this._actions.get_action_state('status'));
             else if (name === 'live')
                 this._setLines(this._actions.get_action_state('live'));
+            else if (name === 'mute')
+                this._setMuted(this._actions.get_action_state('mute'));
         });
         // The group describes its actions on first use; this asks for them.
         this._actions.list_actions();
@@ -99,6 +105,11 @@ class MinutesIndicator extends PanelMenu.Button {
         }
         this._setStatus(null);
         this._setLines(null);
+    }
+
+    _setMuted(variant) {
+        this._muted = variant ? variant.deepUnpack() : false;
+        this._update();
     }
 
     _setLines(variant) {
@@ -136,6 +147,8 @@ class MinutesIndicator extends PanelMenu.Button {
             this._icon.remove_style_class_name('minutes-indicator-recording');
         this._pauseItem.label.text = look.paused ? _('Resume') : _('Pause');
         this._pauseItem.visible = look.canPause;
+        this._muteItem.label.text = this._muted ? _('Unmute My Microphone') : _('Mute My Microphone');
+        this._muteItem.visible = look.canPause;
         this._stopItem.visible = look.canStop;
         this._copyItem.visible = !look.canStop && look.visible && this._lines.length > 0;
 

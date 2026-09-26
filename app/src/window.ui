@@ -246,6 +246,16 @@
                                               </object>
                                             </child>
                                             <child>
+                                              <object class="GtkButton" id="mute_button">
+                                                <property name="label" translatable="yes">_Mute My Microphone</property>
+                                                <property name="use-underline">True</property>
+                                                <property name="action-name">win.mute-mic</property>
+                                                <style>
+                                                  <class name="pill"/>
+                                                </style>
+                                              </object>
+                                            </child>
+                                            <child>
                                               <object class="GtkButton">
                                                 <property name="label" translatable="yes">_Stop</property>
                                                 <property name="use-underline">True</property>
