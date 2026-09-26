@@ -1031,6 +1031,8 @@ mod tests {
     #[test]
     fn the_window_builds_and_shows_a_meeting() {
         if gtk::init().is_err() {
+            // The CI gives it a display; there, not running is a failure.
+            assert!(std::env::var_os("MINUTES_REQUIRE_DISPLAY").is_none(), "no display for the window test");
             eprintln!("no display: window test skipped");
             return;
         }
