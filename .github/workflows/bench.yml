@@ -44,15 +44,19 @@ jobs:
 
       # Restored and saved as separate steps, so a failing bench still keeps
       # the downloads and the build for the next run.
+      # Cargo.lock changes with every version of Minutes, so the last build
+      # whatever its lock file is taken when there is none for this one: cargo
+      # then rebuilds only what changed, not whisper.cpp.
       - name: Restore Cargo and the build
+        id: cargo
         uses: actions/cache/restore@v6
         with:
           path: |
             /cache/cargo/registry
             /cache/cargo/git
             target
-          key: cargo-${{ hashFiles('Cargo.lock', '.cargo/config.toml') }}-${{ github.sha }}
-          restore-keys: cargo-${{ hashFiles('Cargo.lock', '.cargo/config.toml') }}-
+          key: cargo-${{ hashFiles('Cargo.lock', '.cargo/config.toml') }}
+          restore-keys: cargo-
 
       - name: Restore the models and the AMI meeting
         id: models
@@ -78,15 +82,17 @@ jobs:
           python3 bench/run.py --ami --model small.en --check --json bench-results.json --keep bench-transcripts | tee bench-table.txt
           { echo '```'; cat bench-table.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
+      # From main only, once per lock file: pull requests read main's cache,
+      # and each push no longer adds a few hundred megabytes of it.
       - name: Save Cargo and the build
-        if: ${{ always() }}
+        if: ${{ always() && github.ref == 'refs/heads/main' && steps.cargo.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v6
         with:
           path: |
             /cache/cargo/registry
             /cache/cargo/git
             target
-          key: cargo-${{ hashFiles('Cargo.lock', '.cargo/config.toml') }}-${{ github.sha }}
+          key: cargo-${{ hashFiles('Cargo.lock', '.cargo/config.toml') }}
 
       - name: Save the models and the AMI meeting
         if: ${{ always() && steps.models.outputs.cache-hit != 'true' }}
