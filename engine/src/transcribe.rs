@@ -1622,6 +1622,58 @@ fn usage() -> glib::ExitCode {
 mod tests {
     use super::*;
 
+    /// Where live and offline speech detection part on a real call:
+    /// `MINUTES_DIAG_MIC=mic.wav MINUTES_DIAG_COMPUTER=computer.wav cargo test --release -- --ignored --nocapture regions_live_vs_offline`
+    #[test]
+    #[ignore]
+    fn regions_live_vs_offline() {
+        let (Ok(mic), Ok(computer)) = (std::env::var("MINUTES_DIAG_MIC"), std::env::var("MINUTES_DIAG_COMPUTER")) else {
+            return;
+        };
+        let mic = load_track(std::path::Path::new(&mic)).unwrap();
+        let computer = load_track(std::path::Path::new(&computer)).unwrap();
+        let frames = mic.len().div_ceil(FRAME);
+        let flags = |regions: &[Region]| {
+            let mut on = vec![false; frames];
+            for r in regions {
+                on[r.start / FRAME..(r.end / FRAME).min(frames)].iter_mut().for_each(|f| *f = true);
+            }
+            on
+        };
+        let (mic_m, computer_m) = (mix(&mic, &[]), mix(&computer, &[]));
+        let offline = flags(&own_speech_regions(&mic_m, &computer_m));
+        let live = flags(&causal_own_speech_regions(&mic, &computer));
+        // The noise threshold alone, before the echo test.
+        let offline_raw = active_frames(&mic_m, frames);
+        let live_raw = causal_active_frames(&causal_levels(&mic), frames);
+        let minute = WHISPER_RATE * 60 / FRAME;
+        let secs = |n: usize| n as f64 * FRAME as f64 / WHISPER_RATE as f64;
+        println!("minute  offline  live  missed  extra   | threshold only: offline  live  missed");
+        for m in 0..frames.div_ceil(minute) {
+            let range = m * minute..((m + 1) * minute).min(frames);
+            let count = |v: &[bool]| range.clone().filter(|&i| v[i]).count();
+            let missed = range.clone().filter(|&i| offline[i] && !live[i]).count();
+            let extra = range.clone().filter(|&i| live[i] && !offline[i]).count();
+            let missed_raw = range.clone().filter(|&i| offline_raw[i] && !live_raw[i]).count();
+            println!(
+                "{m:>6} {:>7.1}s {:>5.1}s {:>6.1}s {:>5.1}s   | {:>22.1}s {:>5.1}s {:>6.1}s",
+                secs(count(&offline)), secs(count(&live)), secs(missed), secs(extra),
+                secs(count(&offline_raw)), secs(count(&live_raw)), secs(missed_raw)
+            );
+        }
+        let levels = frame_levels(&mic_m);
+        let mut sorted = levels.clone();
+        sorted.sort_by(f32::total_cmp);
+        println!("offline mic threshold {:.4}", (sorted[sorted.len() / 10] * 4.0).max(0.002));
+        let causal = causal_levels(&mic);
+        for at in [1usize, 5, 30, 60, 300] {
+            let i = (at * WHISPER_RATE / FRAME).min(causal.len());
+            let mut known = causal[..i].to_vec();
+            known.sort_by(f32::total_cmp);
+            println!("live mic threshold after {at:>3}s: {:.4}", (known[known.len() / 10] * 4.0).max(0.002));
+        }
+    }
+
     #[test]
     fn speaker_turns_go_back_to_the_real_timeline() {
         let s = |secs: f64| (secs * WHISPER_RATE as f64) as usize;
