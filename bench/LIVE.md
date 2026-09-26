@@ -30,6 +30,18 @@ On clear speech the text is the same, within what whisper changes anyway when it
 
 **Levelling on the speech alone** (90th percentile of the frames above the noise floor), in both modes, so that both could compute it early: it made the after-call transcript worse (AMI ES2004a side 96.7 → 92.8 %, a voice too many) and the live one further from it (41.7 % of the words differ on the whole meeting). Reverted.
 
+**Speech detection that does not depend on the gain**, in both modes: speech is found on the raw tracks above `max(4 × noise floor, -72 dBFS)`, and the echo test compares the mic and the computer audio each against its own speech level (the 90th percentile of its speech frames), both of which are known a few seconds into a call. `regions_live_vs_offline` then shows live and after-call detection agreeing to the frame on the threshold, and the speech lost on the ES2004a mic going from about 73 s to 25 s (0 s on IS1009a).
+
+| | After the call, as it was | After the call, new detection | Live, new detection, 20 s batches |
+|---|---|---|---|
+| Headset call (found / side / person) | 96.3 / 96.3 / 94.4 | 96.0 / 96.0 / 94.1 | 95.0 / 95.0 / 93.1 |
+| Call through speakers | 96.3 / 96.3 / 94.4 | 96.0 / 96.0 / 94.1 | 92.5 / 92.2 / 90.3, 5 voices for 4 |
+| AMI ES2004a (side / person) | 96.7 / 95.7 | 97.8 / 96.8 | 99.5 / 98.4 |
+| AMI IS1009a (side / person) | 34.7 / 73.1 | 34.4 / 73.8 | 46.6 / 75.7, 5 voices for 4 |
+| ES2004a whole: words that differ from after the call | | | 11.1 % (was 15.7 %); your turns 31 and 31 |
+
+Much closer, but still not the same: through speakers the live transcript is 3.8 points worse with a voice that is not there. Reverted; the after-call detection stays as it was, and is what a live mode has to match.
+
 ## What is left
 
 - **Hybrid**: transcribe live for a draft to read during the call; when it ends, find the speech again over the whole call (under a second), transcribe only the stretches that came out differently, and find the speakers over the whole call. Same result as today by construction; the wait after the call shrinks without going away.
