@@ -31,6 +31,18 @@ It needs PipeWire with `parec` and `pacat`, `ffmpeg` with libopus, GTK 4 and lib
 
 `minutes <meeting folder>` opens a meeting. `minutes transcribe <mic> <computer>` and `minutes transcribe-file <audio>` print a transcript as Markdown without opening a window.
 
+## Preview during the call
+
+While Minutes records, it writes a preview of the transcript a few seconds behind the call: in the window under the meters, and in the top bar when you click the indicator. It finds speech on what has been heard so far, gives each batch to whisper on its own and does not tell voices on one side apart, so it is rougher than the transcript made at the end. `bench/LIVE.md` has the measurements of how far behind it stays.
+
+When you stop, the preview is saved at once as `transcript-preview.md` in the meeting folder, to copy or open while the real transcript is made, from the whole recording as before. That one replaces nothing: the preview stays in the folder.
+
+It needs whisper on a GPU (the `cuda` or `vulkan` build). On the CPU the usual model is slower than the call, so there is no preview unless you set a smaller model for it:
+
+```toml
+live_model = "small"
+```
+
 ## Call detection
 
 While Minutes runs, it looks at the PipeWire graph every three seconds. An app that both takes the microphone and plays sound for ten seconds is in a call: Teams, Meet in a browser, Zoom, without Minutes knowing any of them. A video (sound out only) or a voice memo (microphone only) is not. Minutes then shows a notification with a Record button, and reminds you to tell the others first; it never starts on its own. When a call it records ends, it offers to stop.
@@ -79,6 +91,13 @@ fix = "Okafur => Okafor"
 MIT, like the project it comes from. See [LICENSE](LICENSE).
 
 ## Changelog
+
+### v0.2.0 — A preview of the transcript during the call (2026-09-26)
+
+- While recording, a preview of the transcript is written a few seconds behind the call, in the window and in the top bar menu
+- At Stop, the preview is saved at once, to copy or open while the final transcript is made
+- The final transcript is still made from the whole recording, with the same quality as before
+- `live_model` in the config sets a smaller model for the preview on computers without a GPU
 
 ### v0.1.0 — A GNOME app on the engine of omarchy-meeting-recorder (2026-09-26)
 
