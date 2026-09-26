@@ -29,6 +29,9 @@ jobs:
         run: pacman -Syu --noconfirm --needed base-devel git rust cmake clang gtk4 libadwaita ffmpeg libpulse python
 
       - uses: actions/checkout@v7
+        with:
+          # Nothing here pushes: no token left in the checkout.
+          persist-credentials: false
 
       # Restored and saved as separate steps, so a failing bench still keeps
       # the downloads and the build for the next run.
@@ -94,10 +97,13 @@ jobs:
 
       - name: Keep the scores for the comment
         if: ${{ always() && github.event_name == 'pull_request' }}
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           mkdir -p bench-comment
-          echo "${{ github.event.pull_request.number }}" > bench-comment/pr.txt
-          echo "${{ github.event.pull_request.head.sha }}" > bench-comment/sha.txt
+          echo "$PR_NUMBER" > bench-comment/pr.txt
+          echo "$PR_SHA" > bench-comment/sha.txt
           cp bench-results.json bench-comment/ 2>/dev/null || true
 
       - uses: actions/upload-artifact@v7
