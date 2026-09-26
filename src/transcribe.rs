@@ -435,6 +435,18 @@ impl Glued {
     fn locate(&self, glued_ms: i64) -> (i64, usize) {
         locate(&self.map, glued_ms)
     }
+
+    /// Speaker turns found in the glued buffer, moved to the real timeline.
+    fn turns_on_timeline(&self, turns: Vec<crate::diarize::Turn>) -> Vec<crate::diarize::Turn> {
+        turns
+            .into_iter()
+            .map(|t| crate::diarize::Turn {
+                start_ms: self.locate(t.start_ms).0,
+                end_ms: self.locate(t.end_ms).0,
+                ..t
+            })
+            .collect()
+    }
 }
 
 fn locate(map: &[(usize, Region)], glued_ms: i64) -> (i64, usize) {
@@ -562,8 +574,8 @@ pub fn transcribe(
     // several people on the other end of the call. On the mic only your own
     // stretches count, so the other side leaking in is not taken for a person
     // in the room.
-    let local = voices(&only(&mic, &mic_regions), events, abort)?;
-    let remote = voices(&computer, events, abort)?;
+    let local = voices(&mic, &mic_regions, events, abort)?;
+    let remote = voices(&computer, &computer_regions, events, abort)?;
     let context = load_whisper(events, abort)?;
 
     let length = |regions: &[Region]| regions.iter().map(|r| r.end - r.start).sum::<usize>();
@@ -689,28 +701,25 @@ fn interleave(mut sentences: Vec<Segment>) -> Vec<Segment> {
     out
 }
 
-/// `track` with everything outside `regions` silenced.
-fn only(track: &[f32], regions: &[Region]) -> Vec<f32> {
-    let mut out = vec![0.0; track.len()];
-    for region in regions {
-        out[region.start..region.end].copy_from_slice(&track[region.start..region.end]);
-    }
-    out
-}
-
 /// Who is who on one side of a recording: the turns when more than one voice
 /// is heard there, nothing when it is one person. A missing speaker model is
 /// no reason to fail the transcript; the side then stays one speaker.
+///
+/// Only the stretches in `regions` are looked at, glued together like for
+/// whisper: finding speakers keeps several cores busy for every second it is
+/// given, and on the mic most of the call is the other side talking.
 fn voices(
     track: &[f32],
+    regions: &[Region],
     events: &Events,
     abort: &Abort,
 ) -> Result<Vec<crate::diarize::Turn>, String> {
-    if is_silent(track) {
+    let glued = Glued::new(track, regions);
+    if is_silent(&glued.samples) {
         return Ok(Vec::new());
     }
-    match crate::diarize::turns(track, None, events, abort) {
-        Ok(turns) if turns.iter().any(|t| t.speaker > 0) => Ok(turns),
+    match crate::diarize::turns(&glued.samples, None, events, abort) {
+        Ok(turns) if turns.iter().any(|t| t.speaker > 0) => Ok(glued.turns_on_timeline(turns)),
         Ok(_) => Ok(Vec::new()),
         Err(e) if e == CANCELLED => Err(e),
         Err(e) => {
@@ -1384,6 +1393,23 @@ fn usage() -> glib::ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn speaker_turns_go_back_to_the_real_timeline() {
+        let s = |secs: f64| (secs * WHISPER_RATE as f64) as usize;
+        let track = vec![0.0; s(20.0)];
+        let regions = [
+            Region { start: s(2.0), onset: s(2.0), end: s(4.0) },
+            Region { start: s(10.0), onset: s(10.0), end: s(13.0) },
+        ];
+        let glued = Glued::new(&track, &regions);
+        let turn = |start_ms, end_ms, speaker| crate::diarize::Turn { start_ms, end_ms, speaker };
+        // The second region starts 2 s + 0.7 s of gap into the glued buffer.
+        assert_eq!(
+            glued.turns_on_timeline(vec![turn(500, 1500, 0), turn(2700, 5700, 1)]),
+            vec![turn(2500, 3500, 0), turn(10_000, 13_000, 1)]
+        );
+    }
 
     fn line(start_ms: i64, speaker: &str, text: &str) -> Segment {
         Segment {
