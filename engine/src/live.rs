@@ -20,15 +20,21 @@ use crate::transcribe::{
     raw_to_mono,
 };
 
-/// Speech waits for this much more of it before whisper gets a batch.
-const BATCH: usize = WHISPER_RATE * 3;
-/// Unless the oldest stretch waiting ended this long ago.
-const MAX_WAIT: usize = WHISPER_RATE * 4;
 /// A stretch counts as ended when this much has been heard after it.
 const SETTLED: usize = WHISPER_RATE * 4 / 5;
 /// Someone talking on without a pause: a stretch still going is cut once it
 /// is this long, at its quietest moment, rather than waited for.
 const LONG: usize = WHISPER_RATE * 5;
+
+/// What the preview sends out as it goes.
+#[derive(Debug, Clone)]
+pub enum Update {
+    /// Lines of stretches that have ended: they stay.
+    Lines(Vec<Segment>),
+    /// The stretch someone is still in, as far as it has been heard: shown
+    /// until the next draft on that side replaces it; empty text clears it.
+    Draft { speaker: &'static str, start_ms: i64, heard_ms: i64, text: String },
+}
 
 /// The preview of one recording, running in its own thread.
 pub struct Preview {
@@ -37,14 +43,14 @@ pub struct Preview {
 }
 
 impl Preview {
-    /// Starts previewing the recording in `staging`. Lines go to `lines` as
-    /// they are written. Without a model for it (see `models::preview`) the
-    /// preview does nothing.
-    pub fn start(staging: &Path, language: &str, lines: async_channel::Sender<Vec<Segment>>) -> Preview {
+    /// Starts previewing the recording in `staging`; what it writes goes to
+    /// `updates`. Without a model for it (see `models::preview`) the preview
+    /// does nothing.
+    pub fn start(staging: &Path, language: &str, updates: async_channel::Sender<Update>) -> Preview {
         let stop: Abort = Arc::new(AtomicBool::new(false));
         let thread = crate::models::preview().map(|model| {
             let (staging, language, stop) = (staging.to_path_buf(), language.to_owned(), stop.clone());
-            std::thread::spawn(move || run(&model, &staging, &language, &lines, &stop))
+            std::thread::spawn(move || run(&model, &staging, &language, &updates, &stop))
         });
         Preview { stop, thread }
     }
@@ -101,7 +107,7 @@ fn run(
     model: &Path,
     staging: &Path,
     language: &str,
-    lines: &async_channel::Sender<Vec<Segment>>,
+    updates: &async_channel::Sender<Update>,
     stop: &Abort,
 ) -> Vec<Segment> {
     let Ok(context) = load_preview_whisper(model) else {
@@ -113,7 +119,10 @@ fn run(
     let mut done = [0usize; 2];
     let mut earlier = [String::new(), String::new()];
     let mut written = Vec::new();
+    let mut drafts = [String::new(), String::new()];
+    let mut tick = 0u64;
     while !stop.load(Ordering::Relaxed) {
+        tick += 1;
         // Twice a second: whisper gets a stretch a second or so after it ends.
         for _ in 0..2 {
             if stop.load(Ordering::Relaxed) {
@@ -142,49 +151,97 @@ fn run(
             }
             match preview_pass(&context, track, &ready, label, language, &earlier[side], stop) {
                 Ok(new) => {
+                    // Whisper sometimes gives back its prompt, the text just
+                    // before, for a short stretch: a line said again word for
+                    // word among the last few on its side is dropped.
+                    let recent: Vec<String> = written
+                        .iter()
+                        .rev()
+                        .filter(|l: &&Segment| l.speaker == label)
+                        .take(5)
+                        .map(|l| l.text.trim().to_lowercase())
+                        .collect();
+                    let new: Vec<Segment> =
+                        new.into_iter().filter(|l| !recent.contains(&l.text.trim().to_lowercase())).collect();
                     done[side] = ready.last().map_or(done[side], |r| r.end);
                     for line in &new {
                         earlier[side].push(' ');
                         earlier[side].push_str(&line.text);
                     }
                     if !new.is_empty() {
-                        let _ = lines.send_blocking(new.clone());
+                        let _ = updates.send_blocking(Update::Lines(new.clone()));
                         written.extend(new);
                     }
                 }
                 Err(_) => return written,
             }
         }
+        // Once a second, the stretch still going on each side, as a draft.
+        if tick % 2 == 0 {
+            for (side, (track, regions, label)) in [
+                (&mic_track, &mic_regions, crate::meeting::DEFAULT_YOU),
+                (&computer_track, &computer_regions, crate::meeting::DEFAULT_REMOTE),
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                let (start, text) = match open_stretch(regions, done[side], heard) {
+                    Some(open) if heard >= open.start + WHISPER_RATE => {
+                        let piece = Region { start: open.start, onset: open.onset, end: heard };
+                        let text = preview_pass(&context, track, &[piece], label, language, &earlier[side], stop)
+                            .map(|lines| lines.iter().map(|l| l.text.trim()).collect::<Vec<_>>().join(" "))
+                            .unwrap_or_default();
+                        (open.start, text)
+                    }
+                    _ => (heard, String::new()),
+                };
+                if text != drafts[side] {
+                    let ms = |samples: usize| (samples * 1000 / WHISPER_RATE) as i64;
+                    let _ = updates.send_blocking(Update::Draft {
+                        speaker: label,
+                        start_ms: ms(start),
+                        heard_ms: ms(heard),
+                        text: text.clone(),
+                    });
+                    drafts[side] = text;
+                }
+            }
+        }
     }
     written
 }
 
-/// The stretches after `done` that have ended, when there is enough of them
-/// to be worth a batch or the oldest has waited long enough; with the part of
-/// a stretch still going that is already long, cut at its quietest moment so
-/// someone talking on does not hold the preview back.
+/// The stretches after `done` that have ended, and the part of a stretch
+/// still going that is already long, cut at its quietest moment so someone
+/// talking on does not hold the preview back. Each goes to whisper as soon as
+/// it is there: the text heard before is its context.
 fn ready_batch(regions: &[Region], done: usize, heard: usize, track: &[f32]) -> Vec<Region> {
-    // What is left of each stretch past `done`.
-    let pending: Vec<Region> = regions
-        .iter()
-        .filter(|r| r.end > done)
-        .map(|r| Region { start: r.start.max(done), onset: r.onset.max(done), end: r.end })
+    let mut ready: Vec<Region> = pending(regions, done)
+        .into_iter()
+        .filter(|r| r.end + SETTLED <= heard)
         .collect();
-    let mut ready: Vec<Region> = pending.iter().copied().filter(|r| r.end + SETTLED <= heard).collect();
-    let mut cut = false;
-    if let Some(open) = pending.iter().find(|r| r.end + SETTLED > heard) {
+    if let Some(open) = open_stretch(regions, done, heard) {
         let settled = heard.saturating_sub(SETTLED);
         if settled >= open.start + LONG {
             let at = quietest(track, open.start + LONG / 2, settled);
             ready.push(Region { start: open.start, onset: open.onset, end: at });
-            cut = true;
         }
     }
-    let speech: usize = ready.iter().map(|r| r.end - r.start).sum();
-    match ready.first() {
-        Some(first) if cut || speech >= BATCH || heard - first.end >= MAX_WAIT => ready,
-        _ => Vec::new(),
-    }
+    ready
+}
+
+/// What is left of each stretch past `done`.
+fn pending(regions: &[Region], done: usize) -> Vec<Region> {
+    regions
+        .iter()
+        .filter(|r| r.end > done)
+        .map(|r| Region { start: r.start.max(done), onset: r.onset.max(done), end: r.end })
+        .collect()
+}
+
+/// The stretch someone is still in, past `done`.
+fn open_stretch(regions: &[Region], done: usize, heard: usize) -> Option<Region> {
+    pending(regions, done).into_iter().find(|r| r.end + SETTLED > heard)
 }
 
 /// The start of the quietest 30 ms of `track[from..to]`: a pause between words.
@@ -236,13 +293,25 @@ mod tests {
         let second = 48_000 * 4;
         let pace = std::env::var("MINUTES_PREVIEW_SPEED").ok().and_then(|s| s.parse::<u64>().ok()).unwrap_or(10);
         let mut delays = Vec::new();
+        let mut draft_ages = Vec::new();
         let mut written = 0;
         while written < mic.len().max(computer.len()) {
             written = (written + second).min(mic.len().max(computer.len()));
             std::fs::write(&mic_path, &mic[..written.min(mic.len())]).unwrap();
             std::fs::write(&computer_path, &computer[..written.min(computer.len())]).unwrap();
             std::thread::sleep(std::time::Duration::from_millis(1000 / pace));
-            while let Ok(lines) = rx.try_recv() {
+            while let Ok(update) = rx.try_recv() {
+                let lines = match update {
+                    Update::Lines(lines) => lines,
+                    Update::Draft { heard_ms, text, speaker, .. } => {
+                        if !text.is_empty() {
+                            // How much of the call the draft is behind.
+                            draft_ages.push(written as f64 / second as f64 - heard_ms as f64 / 1000.0);
+                            println!("  draft {speaker}: {text}");
+                        }
+                        continue;
+                    }
+                };
                 for line in lines {
                     // Seconds of audio written since the line ended, in the call's own time.
                     delays.push(written as f64 / second as f64 - line.end_ms as f64 / 1000.0);
@@ -261,6 +330,15 @@ mod tests {
         std::thread::sleep(std::time::Duration::from_secs(8));
         let lines = preview.finish();
         println!("{} lines in all", lines.len());
+        if !draft_ages.is_empty() {
+            draft_ages.sort_by(f64::total_cmp);
+            println!(
+                "drafts behind the call: median {:.1} s, 90th percentile {:.1} s ({} drafts)",
+                draft_ages[draft_ages.len() / 2],
+                draft_ages[draft_ages.len() * 9 / 10],
+                draft_ages.len()
+            );
+        }
         if !delays.is_empty() {
             delays.sort_by(f64::total_cmp);
             println!(
@@ -275,18 +353,17 @@ mod tests {
     }
 
     #[test]
-    fn a_batch_waits_for_enough_speech_or_for_time() {
+    fn a_stretch_goes_as_soon_as_it_has_ended() {
         let regions = [region(0.0, 1.0), region(2.0, 3.5), region(5.0, 8.0)];
-        let secs = |s: usize| s * WHISPER_RATE;
-        let track = vec![0.1; secs(40)];
-        // Two short stretches have ended, 2.5 s of speech: wait.
-        assert!(ready_batch(&regions, 0, secs(4), &track).is_empty());
-        // The third has ended too: go.
-        assert_eq!(ready_batch(&regions, 0, secs(9), &track).len(), 3);
-        // After the first two, nothing ended waits.
-        assert!(ready_batch(&regions, secs(4), secs(8), &track).is_empty());
-        // A short stretch alone goes once it has waited long enough.
-        assert_eq!(ready_batch(&regions[..1], 0, secs(6), &track).len(), 1);
+        let secs = |s: f64| (s * WHISPER_RATE as f64) as usize;
+        let track = vec![0.1; secs(40.0)];
+        // The first has ended (0.8 s heard after it), the second not yet.
+        assert_eq!(ready_batch(&regions, 0, secs(2.5), &track).len(), 1);
+        // Both short ones have ended.
+        assert_eq!(ready_batch(&regions, 0, secs(4.4), &track).len(), 2);
+        // After them, the third is still going and short: nothing.
+        assert!(ready_batch(&regions, secs(3.5), secs(8.5), &track).is_empty());
+        assert!(open_stretch(&regions, secs(3.5), secs(8.5)).is_some());
     }
 
     #[test]
