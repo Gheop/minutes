@@ -609,7 +609,7 @@ pub fn transcribe(
     }
     emit(events, Event::Progress(1.0));
     Ok(Transcript {
-        segments: interleave(segments),
+        segments: crate::glossary::apply(interleave(segments)),
         language: if language == "auto" {
             detected.unwrap_or_else(|| "unknown".into())
         } else {
@@ -792,7 +792,7 @@ fn whisper_pass(
     )?;
     emit(events, Event::Progress(1.0));
     Ok(Transcript {
-        segments,
+        segments: crate::glossary::apply(segments),
         language: if language == "auto" {
             detected.unwrap_or_else(|| "unknown".into())
         } else {
@@ -870,7 +870,13 @@ fn run_whisper(
     abort: &Abort,
 ) -> Result<(Vec<Word>, Option<String>), String> {
     let mut state = context.create_state().map_err(|e| e.to_string())?;
+    // Names and jargon whisper would otherwise misspell. Whisper only reads it
+    // for its first window; the `fix` lines of the glossary cover the rest.
+    let prompt = crate::models::config_value("prompt");
     let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
+    if let Some(prompt) = &prompt {
+        params.set_initial_prompt(prompt);
+    }
     let threads = std::thread::available_parallelism().map_or(4, |n| n.get());
     params.set_n_threads(threads.min(16) as i32);
     params.set_language(Some(language));

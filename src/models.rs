@@ -95,24 +95,33 @@ pub fn config_file() -> PathBuf {
         .join("config.toml")
 }
 
+/// Every `key = "value"` line for `key` in the config file, without quotes or a trailing comment.
+pub fn config_values(key: &str) -> Vec<String> {
+    std::fs::read_to_string(config_file())
+        .unwrap_or_default()
+        .lines()
+        .filter_map(|line| {
+            let (k, value) = line.split_once('=')?;
+            (k.trim() == key).then(|| {
+                let value = value.split('#').next().unwrap_or("");
+                value.trim().trim_matches('"').to_owned()
+            })
+        })
+        .filter(|value| !value.is_empty())
+        .collect()
+}
+
+/// The first `key = "value"` line for `key` in the config file.
+pub fn config_value(key: &str) -> Option<String> {
+    config_values(key).into_iter().next()
+}
+
 /// The configured model: a name from `MODELS` or a path to a model file.
 pub fn configured() -> String {
     if let Some(name) = OVERRIDE.lock().unwrap().clone() {
         return name;
     }
-    std::fs::read_to_string(config_file())
-        .ok()
-        .and_then(|text| {
-            text.lines().find_map(|line| {
-                let (key, value) = line.split_once('=')?;
-                (key.trim() == "model").then(|| {
-                    let value = value.split('#').next().unwrap_or("");
-                    value.trim().trim_matches('"').to_owned()
-                })
-            })
-        })
-        .filter(|name| !name.is_empty())
-        .unwrap_or_else(|| DEFAULT.to_owned())
+    config_value("model").unwrap_or_else(|| DEFAULT.to_owned())
 }
 
 fn known(name: &str) -> Option<&'static Model> {

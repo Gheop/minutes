@@ -163,6 +163,16 @@ The default is whisper's `large-v3-turbo`. To use another, set it in `~/.config/
 model = "small"   # tiny, tiny.en, base, base.en, small, small.en, medium, medium.en, large-v3, large-v3-turbo, or a path to a .bin file
 ```
 
+Names and jargon come out better when whisper knows them. `prompt` gives it a sentence with them before it starts, and each `fix` line replaces a word it still gets wrong, as whole words and in any case:
+
+```toml
+prompt = "Budget review with Maya Okafor and Tom Lindqvist: the CAPEX, the SLA, Kubernetes."
+fix = "Okafur => Okafor"
+fix = "Linkvist => Lindqvist"
+```
+
+Whisper only reads the prompt for the first half minute or so, so a name it keeps misspelling later on needs a `fix`.
+
 The command-line `transcribe` and `transcribe-file` take `--model` instead. When the configured model is not on disk yet, the start screen says so, with its size, and a Download button:
 
 <p align="center"><img src="screenshots/model-banner.webp" alt="The banner: The speech model (tiny, 75 MB) is needed to transcribe, with Download" width="600"></p>
