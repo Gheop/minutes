@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: minutes\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-26 08:21+0200\n"
+"POT-Creation-Date: 2026-09-26 13:21+0200\n"
 "PO-Revision-Date: 2026-09-26 08:05+0200\n"
 "Last-Translator: Automatically generated\n"
 "Language-Team: none\n"
@@ -27,11 +27,11 @@ msgid "_About Minutes"
 msgstr "À _propos de Minutes"
 
 #: app/src/window.ui:18 app/src/window.ui:35 app/src/main.rs:37
-#: app/src/main.rs:134
+#: app/src/main.rs:138
 msgid "Minutes"
 msgstr "Minutes"
 
-#: app/src/window.ui:43 app/src/window.ui:99 app/src/window.rs:308
+#: app/src/window.ui:43 app/src/window.ui:99 app/src/window.rs:324
 msgid "New Recording"
 msgstr "Nouvel enregistrement"
 
@@ -87,11 +87,11 @@ msgstr "Votre micro"
 msgid "Computer Audio"
 msgstr "Son de l’ordinateur"
 
-#: app/src/window.ui:200 app/src/window.rs:364 app/src/window.rs:399
+#: app/src/window.ui:200 app/src/window.rs:381 app/src/window.rs:416
 msgid "Recording"
 msgstr "Enregistrement en cours"
 
-#: app/src/window.ui:240 app/src/window.rs:363 app/src/window.rs:397
+#: app/src/window.ui:240 app/src/window.rs:380 app/src/window.rs:414
 msgid "_Pause"
 msgstr "_Pause"
 
@@ -99,147 +99,188 @@ msgstr "_Pause"
 msgid "_Stop"
 msgstr "_Arrêter"
 
-#: app/src/window.ui:275
+#: app/src/window.ui:263
+msgid "Preview"
+msgstr "Aperçu"
+
+#: app/src/window.ui:264
+msgid "Written as the call goes on; the transcript made at the end is better"
+msgstr ""
+"Rédigé pendant l’appel ; la transcription faite à la fin sera meilleure"
+
+#: app/src/window.ui:296
 msgid "Writing the Transcript"
 msgstr "Rédaction de la transcription"
 
-#: app/src/window.ui:290
+#: app/src/window.ui:316
+msgid ""
+"The preview written during the call is ready now; the better transcript "
+"follows."
+msgstr ""
+"L’aperçu rédigé pendant l’appel est disponible dès maintenant ; la "
+"transcription définitive arrive."
+
+#: app/src/window.ui:330
+msgid "Copy the Preview"
+msgstr "Copier l’aperçu"
+
+#: app/src/window.ui:339
+msgid "Open the Preview"
+msgstr "Ouvrir l’aperçu"
+
+#: app/src/window.ui:352
 msgid "_Cancel"
 msgstr "_Annuler"
 
-#: app/src/window.rs:118
+#: app/src/window.rs:132
 msgid "Stop the recording before closing"
 msgstr "Arrêtez l’enregistrement avant de fermer"
 
-#: app/src/window.rs:227
+#: app/src/window.rs:243
 msgid "Call in %s"
 msgstr "Appel dans %s"
 
-#: app/src/window.rs:229
+#: app/src/window.rs:245
 msgid "Record it with Minutes? Tell the others first."
 msgstr ""
 "L’enregistrer avec Minutes ? Prévenez d’abord les autres participants."
 
-#: app/src/window.rs:231
+#: app/src/window.rs:247
 msgid "Record"
 msgstr "Enregistrer"
 
-#: app/src/window.rs:236
+#: app/src/window.rs:252
 msgid "The call in %s ended"
 msgstr "L’appel dans %s est terminé"
 
-#: app/src/window.rs:237
+#: app/src/window.rs:253
 msgid "Stop Recording"
 msgstr "Arrêter l’enregistrement"
 
-#: app/src/window.rs:332
+#: app/src/window.rs:348
 msgid "Meeting %H:%M"
 msgstr "Réunion %H:%M"
 
-#: app/src/window.rs:333
+#: app/src/window.rs:349
 msgid "Meeting"
 msgstr "Réunion"
 
-#: app/src/window.rs:352
+#: app/src/window.rs:368
 msgid "Could not start recording"
 msgstr "Impossible de démarrer l’enregistrement"
 
-#: app/src/window.rs:397
+#: app/src/window.rs:414
 msgid "_Resume"
 msgstr "_Reprendre"
 
-#: app/src/window.rs:399
+#: app/src/window.rs:416
 msgid "Paused"
 msgstr "En pause"
 
-#: app/src/window.rs:417
+#: app/src/window.rs:434
 msgid "Saving the audio"
 msgstr "Enregistrement de l’audio"
 
-#: app/src/window.rs:434
+#: app/src/window.rs:454
 msgid "Transcript cancelled; the audio is kept"
 msgstr "Transcription annulée ; l’audio est conservé"
 
-#: app/src/window.rs:438
+#: app/src/window.rs:458
 msgid "Could not write the transcript"
 msgstr "Impossible de rédiger la transcription"
 
-#: app/src/window.rs:539
+#: app/src/window.rs:565
 msgid "This meeting could not be read"
 msgstr "Impossible de lire cette réunion"
 
-#: app/src/window.rs:550
+#: app/src/window.rs:576
 msgid "Nobody was heard in this meeting."
 msgstr "Personne n’a été entendu pendant cette réunion."
 
-#: app/src/window.rs:568
+#: app/src/window.rs:650
+msgid "preview"
+msgstr "aperçu"
+
+#: app/src/window.rs:664
+msgid "Preview copied"
+msgstr "Aperçu copié"
+
+#: app/src/window.rs:688
 msgid "Transcript ready"
 msgstr "Transcription prête"
 
-#: app/src/window.rs:579
+#: app/src/window.rs:699
 msgid "Transcript copied"
 msgstr "Transcription copiée"
 
-#: app/src/window.rs:638
+#: app/src/window.rs:748
+msgid "You"
+msgstr "Vous"
+
+#: app/src/window.rs:749
+msgid "Others"
+msgstr "Les autres"
+
+#: app/src/window.rs:770
 msgid "Loading the audio"
 msgstr "Chargement de l’audio"
 
-#: app/src/window.rs:639
+#: app/src/window.rs:771
 msgid "Telling the voices apart"
 msgstr "Distinction des voix"
 
-#: app/src/window.rs:640
+#: app/src/window.rs:772
 msgid "Loading the speech model"
 msgstr "Chargement du modèle vocal"
 
-#: app/src/window.rs:641
+#: app/src/window.rs:773
 msgid "Transcribing"
 msgstr "Transcription"
 
-#: app/src/window.rs:642
+#: app/src/window.rs:774
 msgid "Downloading the speech model"
 msgstr "Téléchargement du modèle vocal"
 
-#: app/src/window.rs:643
+#: app/src/window.rs:775
 msgid "Downloading the speaker model"
 msgstr "Téléchargement du modèle des voix"
 
-#: app/src/window.rs:650
+#: app/src/window.rs:782
 msgid "Detect Automatically"
 msgstr "Détection automatique"
 
-#: app/src/window.rs:651
+#: app/src/window.rs:783
 msgid "English"
 msgstr "Anglais"
 
-#: app/src/window.rs:652
+#: app/src/window.rs:784
 msgid "French"
 msgstr "Français"
 
-#: app/src/window.rs:653
+#: app/src/window.rs:785
 msgid "Dutch"
 msgstr "Néerlandais"
 
-#: app/src/window.rs:654
+#: app/src/window.rs:786
 msgid "German"
 msgstr "Allemand"
 
-#: app/src/window.rs:655
+#: app/src/window.rs:787
 msgid "Spanish"
 msgstr "Espagnol"
 
-#: app/src/window.rs:656
+#: app/src/window.rs:788
 msgid "Italian"
 msgstr "Italien"
 
-#: app/src/window.rs:657
+#: app/src/window.rs:789
 msgid "Portuguese"
 msgstr "Portugais"
 
-#: app/src/main.rs:143
+#: app/src/main.rs:147
 msgid "Based on"
 msgstr "Basé sur"
 
-#: app/src/main.rs:147
+#: app/src/main.rs:151
 msgid "Speech and speakers"
 msgstr "Parole et locuteurs"

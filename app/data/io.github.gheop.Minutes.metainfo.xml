@@ -25,6 +25,11 @@
     <control>pointing</control>
   </supports>
   <releases>
+    <release version="0.2.0" date="2026-09-26">
+      <description>
+        <p>A preview of the transcript is written during the call, shown in the window and in the top bar, and saved at once when the call ends; the final transcript is still made from the whole recording.</p>
+      </description>
+    </release>
     <release version="0.1.0" date="2026-09-26">
       <description>
         <p>First version of Minutes: a GNOME interface on the engine of omarchy-meeting-recorder, with GPU transcription through CUDA, a glossary for names, and speakers found about a quarter faster.</p>

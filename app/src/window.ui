@@ -258,6 +258,27 @@
                                             </child>
                                           </object>
                                         </child>
+                                        <child>
+                                          <object class="AdwPreferencesGroup" id="live_group">
+                                            <property name="title" translatable="yes">Preview</property>
+                                            <property name="description" translatable="yes">Written as the call goes on; the transcript made at the end is better</property>
+                                            <property name="visible">False</property>
+                                            <child>
+                                              <object class="GtkScrolledWindow" id="live_scroller">
+                                                <property name="hscrollbar-policy">never</property>
+                                                <property name="min-content-height">260</property>
+                                                <property name="child">
+                                                  <object class="GtkListBox" id="live_list">
+                                                    <property name="selection-mode">none</property>
+                                                    <style>
+                                                      <class name="boxed-list"/>
+                                                    </style>
+                                                  </object>
+                                                </property>
+                                              </object>
+                                            </child>
+                                          </object>
+                                        </child>
                                       </object>
                                     </property>
                                   </object>
@@ -283,6 +304,47 @@
                                         <child>
                                           <object class="GtkProgressBar" id="progress">
                                             <property name="show-text">True</property>
+                                          </object>
+                                        </child>
+                                        <child>
+                                          <object class="GtkBox" id="preview_actions">
+                                            <property name="orientation">vertical</property>
+                                            <property name="spacing">12</property>
+                                            <property name="visible">False</property>
+                                            <child>
+                                              <object class="GtkLabel">
+                                                <property name="label" translatable="yes">The preview written during the call is ready now; the better transcript follows.</property>
+                                                <property name="wrap">True</property>
+                                                <property name="justify">center</property>
+                                                <style>
+                                                  <class name="dimmed"/>
+                                                </style>
+                                              </object>
+                                            </child>
+                                            <child>
+                                              <object class="GtkBox">
+                                                <property name="halign">center</property>
+                                                <property name="spacing">12</property>
+                                                <child>
+                                                  <object class="GtkButton">
+                                                    <property name="label" translatable="yes">Copy the Preview</property>
+                                                    <property name="action-name">win.copy-preview</property>
+                                                    <style>
+                                                      <class name="pill"/>
+                                                    </style>
+                                                  </object>
+                                                </child>
+                                                <child>
+                                                  <object class="GtkButton">
+                                                    <property name="label" translatable="yes">Open the Preview</property>
+                                                    <property name="action-name">win.open-preview</property>
+                                                    <style>
+                                                      <class name="pill"/>
+                                                    </style>
+                                                  </object>
+                                                </child>
+                                              </object>
+                                            </child>
                                           </object>
                                         </child>
                                         <child>

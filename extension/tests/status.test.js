@@ -1,5 +1,5 @@
 // gjs -m extension/tests/status.test.js
-import {clock, describe} from '../minutes@gheop.github/status.js';
+import {clock, describe, previewLines} from '../minutes@gheop.github/status.js';
 
 let failed = 0;
 function check(what, got, want) {
@@ -29,6 +29,12 @@ check('paused offers to resume', [paused.paused, paused.ticking], [true, false])
 const transcribing = describe(['transcribing', 0, 0.427], 0);
 check('transcribing shows whole percents', transcribing.label, '42 %');
 check('a transcript being written cannot be stopped from the bar', transcribing.canStop, false);
+
+const lines = Array.from({length: 20}, (_, i) => [`00:${String(i).padStart(2, '0')}`, i % 2 ? 'Others' : 'You', `line ${i}`]);
+check('the preview keeps the newest lines', previewLines(lines).map(l => l.text).at(-1), 'line 19');
+check('the preview shows at most twelve by default', previewLines(lines).length, 12);
+check('each line gets who and when', previewLines(lines)[0].heading, 'You · 00:08');
+check('no preview yet is no lines', previewLines(null), []);
 
 if (failed) {
     printerr(`${failed} failed`);

@@ -15,7 +15,7 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
-import {describe} from './status.js';
+import {describe, previewLines} from './status.js';
 
 const BUS_NAME = 'io.github.gheop.Minutes';
 const OBJECT_PATH = '/io/github/gheop/Minutes';
@@ -36,8 +36,25 @@ class MinutesIndicator extends PanelMenu.Button {
         box.add_child(this._label);
         this.add_child(box);
 
+        // The preview written during the call, newest line at the bottom.
+        this._previewSection = new PopupMenu.PopupMenuSection();
+        this._previewBox = new St.BoxLayout({vertical: true, style_class: 'minutes-preview'});
+        this._previewScroll = new St.ScrollView({
+            style_class: 'minutes-preview-scroll',
+            hscrollbar_policy: St.PolicyType.NEVER,
+            vscrollbar_policy: St.PolicyType.AUTOMATIC,
+            child: this._previewBox,
+        });
+        const previewItem = new PopupMenu.PopupBaseMenuItem({reactive: false, can_focus: false});
+        previewItem.add_child(this._previewScroll);
+        this._previewSection.addMenuItem(previewItem);
+        this._previewSection.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+        this.menu.addMenuItem(this._previewSection);
+        this._lines = [];
+
         this._pauseItem = this.menu.addAction(_('Pause'), () => this._activate('pause'));
         this._stopItem = this.menu.addAction(_('Stop'), () => this._activate('stop'));
+        this._copyItem = this.menu.addAction(_('Copy the Preview'), () => this._activate('copy-preview'));
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
         this.menu.addAction(_('Open Minutes'), () => this._openApp());
 
@@ -60,10 +77,14 @@ class MinutesIndicator extends PanelMenu.Button {
         this._actionsSignal = this._actions.connect('action-state-changed', (_group, name, state) => {
             if (name === 'status')
                 this._setStatus(state);
+            else if (name === 'live')
+                this._setLines(state);
         });
         this._addedSignal = this._actions.connect('action-added', (_group, name) => {
             if (name === 'status')
                 this._setStatus(this._actions.get_action_state('status'));
+            else if (name === 'live')
+                this._setLines(this._actions.get_action_state('live'));
         });
         // The group describes its actions on first use; this asks for them.
         this._actions.list_actions();
@@ -77,6 +98,26 @@ class MinutesIndicator extends PanelMenu.Button {
             this._actions = null;
         }
         this._setStatus(null);
+        this._setLines(null);
+    }
+
+    _setLines(variant) {
+        this._lines = variant ? variant.deepUnpack() : [];
+        this._previewBox.destroy_all_children();
+        for (const line of previewLines(this._lines)) {
+            this._previewBox.add_child(new St.Label({text: line.heading, style_class: 'minutes-preview-heading'}));
+            const text = new St.Label({text: line.text, style_class: 'minutes-preview-text'});
+            text.clutter_text.line_wrap = true;
+            this._previewBox.add_child(text);
+        }
+        this._previewSection.actor.visible = this._lines.length > 0;
+        this._update();
+        // Keep the newest line in sight once it is laid out.
+        GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+            const adjustment = this._previewScroll.vadjustment;
+            adjustment.value = adjustment.upper;
+            return GLib.SOURCE_REMOVE;
+        });
     }
 
     _setStatus(variant) {
@@ -96,6 +137,7 @@ class MinutesIndicator extends PanelMenu.Button {
         this._pauseItem.label.text = look.paused ? _('Resume') : _('Pause');
         this._pauseItem.visible = look.canPause;
         this._stopItem.visible = look.canStop;
+        this._copyItem.visible = !look.canStop && look.visible && this._lines.length > 0;
 
         if (look.ticking && !this._tick) {
             this._tick = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 1, () => {

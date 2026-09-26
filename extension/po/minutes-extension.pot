@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: minutes-extension\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-26 08:18+0200\n"
+"POT-Creation-Date: 2026-09-26 13:22+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -17,18 +17,22 @@ msgstr ""
 "Content-Type: text/plain; charset=CHARSET\n"
 "Content-Transfer-Encoding: 8bit\n"
 
-#: minutes@gheop.github/extension.js:39 minutes@gheop.github/extension.js:96
+#: minutes@gheop.github/extension.js:55 minutes@gheop.github/extension.js:137
 msgid "Pause"
 msgstr ""
 
-#: minutes@gheop.github/extension.js:40
+#: minutes@gheop.github/extension.js:56
 msgid "Stop"
 msgstr ""
 
-#: minutes@gheop.github/extension.js:42
+#: minutes@gheop.github/extension.js:57
+msgid "Copy the Preview"
+msgstr ""
+
+#: minutes@gheop.github/extension.js:59
 msgid "Open Minutes"
 msgstr ""
 
-#: minutes@gheop.github/extension.js:96
+#: minutes@gheop.github/extension.js:137
 msgid "Resume"
 msgstr ""

@@ -6,3 +6,19 @@
     font-feature-settings: "tnum";
     padding-left: 4px;
 }
+
+.minutes-preview-scroll {
+    width: 26em;
+    max-height: 22em;
+}
+
+.minutes-preview-heading {
+    font-size: 0.85em;
+    font-weight: bold;
+    color: #9a9996;
+    padding-top: 6px;
+}
+
+.minutes-preview-text {
+    padding-bottom: 2px;
+}

@@ -13,9 +13,10 @@ use gtk::{gio, glib};
 use minutes_engine::audio::{self, Source};
 use minutes_engine::calls::{self, Change, Tracker};
 use minutes_engine::export::Format;
+use minutes_engine::live::Preview;
 use minutes_engine::meeting::{self, Manifest};
 use minutes_engine::session::{self, Note};
-use minutes_engine::transcribe::{Abort, CANCELLED, Event, LANGUAGES};
+use minutes_engine::transcribe::{self, Abort, CANCELLED, Event, LANGUAGES, Segment, Transcript};
 
 /// A recording in progress.
 pub struct Recording {
@@ -75,6 +76,14 @@ mod imp {
         pub progress: TemplateChild<gtk::ProgressBar>,
         #[template_child]
         pub transcript: TemplateChild<gtk::ListBox>,
+        #[template_child]
+        pub live_group: TemplateChild<adw::PreferencesGroup>,
+        #[template_child]
+        pub live_scroller: TemplateChild<gtk::ScrolledWindow>,
+        #[template_child]
+        pub live_list: TemplateChild<gtk::ListBox>,
+        #[template_child]
+        pub preview_actions: TemplateChild<gtk::Box>,
 
         /// The mic and the computer audio, listened to from the start so the
         /// meters show that both arrive before anything is recorded.
@@ -85,6 +94,11 @@ mod imp {
         pub markdown: RefCell<String>,
         /// Calls seen in the PipeWire graph, to offer recording them.
         pub calls: RefCell<Tracker>,
+        /// The preview written while recording, and its lines so far.
+        pub preview: RefCell<Option<Preview>>,
+        pub live: RefCell<Vec<Segment>>,
+        /// The preview saved at Stop, for Copy and Open.
+        pub preview_file: RefCell<Option<PathBuf>>,
     }
 
     #[glib::object_subclass]
@@ -156,6 +170,8 @@ impl MinutesWindow {
             action("copy", Self::copy),
             action("new", Self::show_ready),
             action("open-folder", Self::open_folder),
+            action("copy-preview", Self::copy_preview),
+            action("open-preview", Self::open_preview),
         ]);
         self.set_busy(false);
 
@@ -352,6 +368,7 @@ impl MinutesWindow {
             self.toast(&format!("{}: {e}", gettext("Could not start recording")));
             return;
         }
+        self.start_preview(&staging, &note.language);
         *imp.recording.borrow_mut() = Some(Recording {
             staging,
             note,
@@ -424,6 +441,9 @@ impl MinutesWindow {
             *win.imp().abort.borrow_mut() = None;
             win.set_busy(false);
             win.publish("idle", 0, 0.0);
+            win.imp().preview_actions.set_visible(false);
+            win.imp().live.borrow_mut().clear();
+            win.publish_live();
             win.load_meetings();
             match result {
                 Ok(dir) => {
@@ -447,10 +467,16 @@ impl MinutesWindow {
     async fn finish(&self, recording: Recording, abort: Abort) -> Result<PathBuf, String> {
         let Recording { staging, note, .. } = recording;
         let out = session::meeting_dir(&session::meetings_root(), note.started_at, &note.title);
+        // The preview's model has to leave the GPU before the final one comes.
+        let preview = self.imp().preview.borrow_mut().take();
+        let lines = gio::spawn_blocking(move || preview.map(Preview::finish).unwrap_or_default())
+            .await
+            .unwrap_or_default();
         let (audio_out, audio_staging) = (out.clone(), staging.clone());
         let saved = gio::spawn_blocking(move || session::save_audio(&audio_staging, &audio_out, note.format))
             .await
             .unwrap_or((false, false));
+        self.save_preview(&out, &note, lines);
         let mut manifest = Manifest {
             title: note.title.clone(),
             started_at: note.started_at,
@@ -556,6 +582,100 @@ impl MinutesWindow {
         imp.split_view.set_show_content(true);
     }
 
+    /// Starts the preview of a recording and shows its lines as they come.
+    fn start_preview(&self, staging: &Path, language: &str) {
+        let imp = self.imp();
+        imp.live.borrow_mut().clear();
+        imp.live_list.remove_all();
+        imp.live_group.set_visible(false);
+        *imp.preview_file.borrow_mut() = None;
+        let (tx, rx) = async_channel::unbounded::<Vec<Segment>>();
+        *imp.preview.borrow_mut() = Some(Preview::start(staging, language, tx));
+        let weak = self.downgrade();
+        glib::spawn_future_local(async move {
+            while let Ok(lines) = rx.recv().await {
+                let Some(win) = weak.upgrade() else {
+                    return;
+                };
+                win.add_live(lines);
+            }
+        });
+    }
+
+    fn add_live(&self, lines: Vec<Segment>) {
+        let imp = self.imp();
+        imp.live_group.set_visible(true);
+        for line in &lines {
+            let time = clock((line.start_ms / 1000).max(0) as u64);
+            imp.live_list.append(&transcript_row(&time, &side_name(&line.speaker), &line.text));
+        }
+        imp.live.borrow_mut().extend(lines);
+        self.publish_live();
+        // Follow the newest line once it is laid out.
+        let adjustment = imp.live_scroller.vadjustment();
+        glib::idle_add_local_once(move || adjustment.set_value(adjustment.upper()));
+    }
+
+    /// The last lines of the preview, for the Shell extension: `app.live`
+    /// holds (time, speaker, text) for each.
+    fn publish_live(&self) {
+        let Some(action) = self
+            .application()
+            .and_then(|app| app.lookup_action("live"))
+            .and_downcast::<gio::SimpleAction>()
+        else {
+            return;
+        };
+        let live = self.imp().live.borrow();
+        let lines: Vec<(String, String, String)> = live
+            .iter()
+            .skip(live.len().saturating_sub(40))
+            .map(|l| (clock((l.start_ms / 1000).max(0) as u64), side_name(&l.speaker), l.text.clone()))
+            .collect();
+        action.set_state(&lines.to_variant());
+    }
+
+    /// Writes the preview into the meeting folder, to use while the final
+    /// transcript is made.
+    fn save_preview(&self, out: &Path, note: &Note, lines: Vec<Segment>) {
+        let imp = self.imp();
+        if lines.is_empty() {
+            return;
+        }
+        let date = glib::DateTime::from_unix_local(note.started_at)
+            .and_then(|t| t.format("%Y-%m-%d %H:%M"))
+            .map(|s| s.to_string())
+            .unwrap_or_default();
+        let preview = Transcript { segments: lines, language: note.language.clone(), duration_secs: 0 };
+        let title = format!("{} ({})", note.title, gettext("preview"));
+        let path = out.join(PREVIEW_FILE);
+        if std::fs::write(&path, transcribe::to_markdown(&title, &date, &preview)).is_ok() {
+            *imp.preview_file.borrow_mut() = Some(path);
+            imp.preview_actions.set_visible(true);
+        }
+    }
+
+    fn copy_preview(&self) {
+        let Some(path) = self.imp().preview_file.borrow().clone() else {
+            return;
+        };
+        if let Ok(text) = std::fs::read_to_string(path) {
+            self.clipboard().set_text(&text);
+            self.toast(&gettext("Preview copied"));
+        }
+    }
+
+    fn open_preview(&self) {
+        let Some(path) = self.imp().preview_file.borrow().clone() else {
+            return;
+        };
+        gtk::FileLauncher::new(Some(&gio::File::for_path(path))).launch(
+            Some(self),
+            gio::Cancellable::NONE,
+            |_| {},
+        );
+    }
+
     /// A notification when the transcript is ready; clicking it opens the meeting.
     fn notify_ready(&self, dir: &Path) {
         let Some(app) = self.application() else {
@@ -617,6 +737,18 @@ fn transcript_row(time: &str, speaker: &str, text: &str) -> gtk::ListBoxRow {
         .build();
     body.append(&what);
     gtk::ListBoxRow::builder().child(&body).activatable(false).build()
+}
+
+/// The preview written during the call, next to the final transcript.
+pub const PREVIEW_FILE: &str = "transcript-preview.md";
+
+/// A side's label as the preview shows it.
+fn side_name(label: &str) -> String {
+    match label {
+        meeting::DEFAULT_YOU => gettext("You"),
+        meeting::DEFAULT_REMOTE => gettext("Others"),
+        other => other.to_owned(),
+    }
 }
 
 /// `mm:ss`, or `h:mm:ss` from an hour on.
@@ -692,6 +824,19 @@ mod tests {
         assert!(win.is_action_enabled("record"));
         assert!(!win.is_action_enabled("stop"));
         assert!(!win.is_action_enabled("pause"));
+
+        // The preview shows its lines as they come, under the recording.
+        assert!(!imp.live_group.property::<bool>("visible"));
+        let line = |start_ms, speaker: &str, text: &str| Segment {
+            start_ms,
+            end_ms: start_ms + 2000,
+            speaker: speaker.into(),
+            text: text.into(),
+        };
+        win.add_live(vec![line(1000, "You", "Bonjour."), line(4000, "Remote", "Salut.")]);
+        assert!(imp.live_group.property::<bool>("visible"));
+        assert_eq!(imp.live.borrow().len(), 2);
+        assert!(imp.live_list.row_at_index(1).is_some() && imp.live_list.row_at_index(2).is_none());
 
         let dir = std::env::temp_dir().join(format!("minutes-window-{}/202609261000 Budget", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();

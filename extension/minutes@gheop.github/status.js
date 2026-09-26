@@ -37,3 +37,14 @@ export function describe(status, now) {
             recording: false, canPause: false, paused: false, canStop: false, ticking: false};
     }
 }
+
+/**
+ * The preview lines to show in the menu, newest last: the last `max` of the
+ * (time, speaker, text) lines Minutes publishes, with a heading for each.
+ */
+export function previewLines(lines, max = 12) {
+    return (lines ?? []).slice(-max).map(([time, speaker, text]) => ({
+        heading: `${speaker} · ${time}`,
+        text,
+    }));
+}
