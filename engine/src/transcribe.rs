@@ -605,7 +605,7 @@ pub(crate) fn preview_pass(
 ) -> Result<Vec<Segment>, String> {
     let quiet = async_channel::unbounded().0;
     let speakers = Speakers::Side(label, Vec::new());
-    side_pass(context, track, regions, &speakers, language, (0.0, 1.0), false, earlier, &quiet, abort)
+    side_pass(context, track, regions, &speakers, language, (0.0, 1.0), false, earlier, true, &quiet, abort)
         .map(|(lines, _)| lines)
 }
 
@@ -707,6 +707,7 @@ pub fn transcribe(
             (done, done + share),
             false,
             "",
+            false,
             events,
             abort,
         )?;
@@ -897,6 +898,7 @@ fn whisper_pass(
         (0.0, 1.0),
         true,
         "",
+        false,
         events,
         abort,
     )?;
@@ -947,13 +949,14 @@ fn side_pass(
     progress: (f64, f64),
     paragraphs: bool,
     earlier: &str,
+    fitted: bool,
     events: &Events,
     abort: &Abort,
 ) -> Result<(Vec<Segment>, Option<String>), String> {
     let glued = Glued::new(track, regions);
     emit(events, Event::Stage("Transcribing".into()));
     let (words, detected) =
-        run_whisper(context, &glued, speakers, language, earlier, progress, events, abort)?;
+        run_whisper(context, &glued, speakers, language, earlier, fitted, progress, events, abort)?;
     Ok((
         phrases(&words, &glued, speakers, track, paragraphs),
         detected,
@@ -977,6 +980,7 @@ fn run_whisper(
     speakers: &Speakers,
     language: &str,
     earlier: &str,
+    fitted: bool,
     progress: (f64, f64),
     events: &Events,
     abort: &Abort,
@@ -995,6 +999,19 @@ fn run_whisper(
     let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
     if let Some(prompt) = &prompt {
         params.set_initial_prompt(prompt);
+    }
+    // Whisper encodes 30 s windows, silence added to fill them; a few seconds
+    // of preview cost as much as 30. `fitted` sizes the window to the audio
+    // (50 positions a second, and some to spare), for speed over a little
+    // accuracy.
+    if fitted {
+        // A few window sizes only: the GPU prepares each size once.
+        let seconds = glued.samples.len() as f64 / WHISPER_RATE as f64;
+        let needed = (seconds * 50.0).ceil() as i32 + 64;
+        params.set_audio_ctx([384, 768, 1152, 1500].into_iter().find(|&c| c >= needed).unwrap_or(1500));
+        // One second try instead of four when a stretch decodes badly: each
+        // costs a whole decode. None at all lets whisper loop on its prompt.
+        params.set_temperature_inc(0.5);
     }
     let threads = std::thread::available_parallelism().map_or(4, |n| n.get());
     params.set_n_threads(threads.min(16) as i32);
