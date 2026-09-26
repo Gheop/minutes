@@ -85,8 +85,15 @@ jobs:
           key: cargo-${{ hashFiles('Cargo.lock', '.cargo/config.toml') }}
           restore-keys: cargo-
 
+      - name: Format
+        run: cargo fmt --all --check
+
       - name: Build
         run: cargo build --release
+
+      # After the build, so the dependencies it compiled are reused.
+      - name: Lint
+        run: cargo clippy --release --all-targets -- -D warnings
 
       # On a virtual screen, so the window test runs instead of skipping.
       - name: Unit tests
