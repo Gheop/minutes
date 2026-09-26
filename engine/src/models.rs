@@ -148,7 +148,24 @@ fn usable(path: &Path, model: Option<&Model>) -> bool {
 
 /// The configured model's file, when it is on disk.
 pub fn find() -> Option<PathBuf> {
-    let name = configured();
+    find_named(&configured())
+}
+
+/// The model for the preview while a call goes on: `live_model` in the
+/// config, else the usual model when whisper runs on a GPU. On the CPU the
+/// usual model is slower than the call itself, so there is no preview unless
+/// a smaller one is set.
+pub fn preview() -> Option<PathBuf> {
+    match config_value("live_model") {
+        Some(name) => find_named(&name),
+        None if cfg!(any(feature = "vulkan", feature = "cuda")) => find(),
+        None => None,
+    }
+}
+
+/// A model's file by name (see `MODELS`) or path, when it is on disk.
+pub fn find_named(name: &str) -> Option<PathBuf> {
+    let name = name.to_owned();
     match known(&name) {
         Some(model) => [models_dir(), data_dir().join("voxtype/models")]
             .into_iter()

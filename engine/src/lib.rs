@@ -11,6 +11,7 @@ pub mod chapters;
 pub mod diarize;
 pub mod export;
 pub mod glossary;
+pub mod live;
 pub mod meeting;
 pub mod models;
 pub mod nemotron;
