@@ -28,12 +28,12 @@ jobs:
       - name: Install build and runtime dependencies
         run: pacman -Syu --noconfirm --needed base-devel git rust cmake clang gtk4 libadwaita ffmpeg libpulse python
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Restored and saved as separate steps, so a failing bench still keeps
       # the downloads and the build for the next run.
       - name: Restore Cargo and the build
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: |
             /cache/cargo/registry
@@ -44,7 +44,7 @@ jobs:
 
       - name: Restore the models and the AMI meeting
         id: models
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: |
             /cache/data/omarchy-meeting-recorder/models
@@ -68,7 +68,7 @@ jobs:
 
       - name: Save Cargo and the build
         if: ${{ always() }}
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: |
             /cache/cargo/registry
@@ -78,14 +78,14 @@ jobs:
 
       - name: Save the models and the AMI meeting
         if: ${{ always() && steps.models.outputs.cache-hit != 'true' }}
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: |
             /cache/data/omarchy-meeting-recorder/models
             bench/.cache
           key: models-small.en-nemotron-353b6f8-ami-ES2004a
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: ${{ always() }}
         with:
           name: bench-transcripts
@@ -100,7 +100,7 @@ jobs:
           echo "${{ github.event.pull_request.head.sha }}" > bench-comment/sha.txt
           cp bench-results.json bench-comment/ 2>/dev/null || true
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: ${{ always() && github.event_name == 'pull_request' }}
         with:
           name: bench-comment
