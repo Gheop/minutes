@@ -25,6 +25,9 @@ struct Inner {
     paused: bool,
     /// Set by `stop`: parec is killed and not started again.
     stopped: bool,
+    /// While muted, silence is written in place of the sound, so the track
+    /// keeps its length and stays in step with the other one.
+    muted: bool,
     /// The parec running now, to kill on `stop`.
     pid: Option<u32>,
 }
@@ -42,6 +45,7 @@ impl Source {
             file: None,
             paused: false,
             stopped: false,
+            muted: false,
             pid: None,
         }));
         let shared = inner.clone();
@@ -76,6 +80,15 @@ impl Source {
         inner.file = Some(file);
         inner.paused = false;
         Ok(())
+    }
+
+    /// Records silence instead of this source, for as long as it is muted.
+    pub fn set_muted(&self, muted: bool) {
+        self.inner.lock().unwrap().muted = muted;
+    }
+
+    pub fn is_muted(&self) -> bool {
+        self.inner.lock().unwrap().muted
     }
 
     pub fn set_paused(&self, paused: bool) {
@@ -138,6 +151,9 @@ fn capture(device: &str, shared: &Mutex<Inner>) {
     let mut chunks: u64 = 0;
     while stdout.read_exact(&mut buf).is_ok() {
         chunks += 1;
+        if shared.lock().unwrap().muted {
+            buf.fill(0);
+        }
         let peak = buf
             .as_chunks::<2>()
             .0
