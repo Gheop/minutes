@@ -54,6 +54,20 @@ It needs whisper on a GPU (the `cuda` or `vulkan` build). On the CPU the usual m
 live_model = "small"
 ```
 
+## Muting your microphone
+
+The **Mute My Microphone** button (in the window and in the top bar menu) records silence on your side while it is on: the track keeps its length, so the two sides stay in step. What you say while muted stays out of the preview and the transcript.
+
+With Teams, Minutes can follow your mute button there too. Muting yourself in Teams only stops what Teams sends; your microphone still hears you, and so would Minutes. If Teams runs with a debugging port (teams-for-linux started with `--remote-debugging-port`), set it in the config:
+
+```toml
+teams_debug_port = 9222
+```
+
+Twice a second while recording, Minutes then reads the Teams window: whether you are muted there, your name, and who else is in the call. It only reads the page, never clicks or sends anything, and only when this is set, since that port gives full control of Teams. While you are muted in Teams your side is recorded as silence; and when a single other person is in the call, the preview and the transcript use their name and yours instead of "Others" and "You".
+
+A Bluetooth headset such as AirPods only gives its microphone once an app switches it to its headset profile, as Teams does when a call starts; outside a call Minutes hears nothing from it, and does not switch it itself, since that would bring your music down to phone quality.
+
 ## Call detection
 
 While Minutes runs, it looks at the PipeWire graph every three seconds. An app that both takes the microphone and plays sound for ten seconds is in a call: Teams, Meet in a browser, Zoom, without Minutes knowing any of them. A video (sound out only) or a voice memo (microphone only) is not. Minutes then shows a notification with a Record button, and reminds you to tell the others first; it never starts on its own. When a call it records ends, it offers to stop.
@@ -102,6 +116,12 @@ fix = "Okafur => Okafor"
 MIT, like the project it comes from. See [LICENSE](LICENSE).
 
 ## Changelog
+
+### v0.4.0 — Mute your microphone, here or in Teams (2026-09-26)
+
+- **Mute My Microphone** records silence on your side, in the window and in the top bar menu
+- With `teams_debug_port`, muting yourself in Teams mutes your side in Minutes too
+- With Teams, the preview and the transcript show your name and the other person's in a call between two
 
 ### v0.3.0 — Installed, and waiting for calls in the background (2026-09-26)
 
