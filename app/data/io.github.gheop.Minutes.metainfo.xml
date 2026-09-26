@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.gheop.Minutes</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>Minutes</name>
+  <summary>Record meetings and transcribe them locally</summary>
+  <summary xml:lang="fr">Enregistrer les réunions et les transcrire localement</summary>
+  <description>
+    <p>Minutes records your microphone and what your computer plays as two tracks, and when the meeting ends it writes the transcript, with who said what, on your own computer. No bot joins the call and no audio leaves your computer.</p>
+    <p xml:lang="fr">Minutes enregistre votre micro et ce que joue votre ordinateur sur deux pistes, et à la fin de la réunion il rédige la transcription, avec qui a dit quoi, sur votre propre ordinateur. Aucun robot ne rejoint l’appel et aucun son ne quitte votre ordinateur.</p>
+  </description>
+  <launchable type="desktop-id">io.github.gheop.Minutes.desktop</launchable>
+  <developer id="io.github.gheop">
+    <name>Gheop</name>
+  </developer>
+  <url type="homepage">https://github.com/Gheop/minutes</url>
+  <url type="bugtracker">https://github.com/Gheop/minutes/issues</url>
+  <content_rating type="oars-1.1"/>
+  <requires>
+    <display_length compare="ge">360</display_length>
+  </requires>
+  <supports>
+    <control>keyboard</control>
+    <control>pointing</control>
+  </supports>
+  <releases>
+    <release version="1.3.0" date="2026-09-26">
+      <description>
+        <p>First version of Minutes: a GNOME interface on the engine of omarchy-meeting-recorder, with GPU transcription through CUDA, a glossary for names, and speakers found about a quarter faster.</p>
+      </description>
+    </release>
+  </releases>
+</component>

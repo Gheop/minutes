@@ -1,0 +1,12 @@
+[Desktop Entry]
+Name=Minutes
+Comment=Record meetings and transcribe them on this computer
+Comment[fr]=Enregistrer les réunions et les transcrire sur cet ordinateur
+Exec=minutes %f
+Icon=io.github.gheop.Minutes
+Terminal=false
+Type=Application
+Categories=Office;GTK;GNOME;
+Keywords=meeting;transcript;transcription;recorder;whisper;teams;réunion;compte-rendu;
+StartupNotify=true
+DBusActivatable=false
