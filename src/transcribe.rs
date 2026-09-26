@@ -574,9 +574,28 @@ pub fn transcribe(
     // several people on the other end of the call. On the mic only your own
     // stretches count, so the other side leaking in is not taken for a person
     // in the room.
-    let local = voices(&mic, &mic_regions, events, abort)?;
-    let remote = voices(&computer, &computer_regions, events, abort)?;
-    let context = load_whisper(events, abort)?;
+    // Loading whisper reads and uploads 1.6 GB and barely uses the cores
+    // finding the speakers needs, so it happens meanwhile. Not when the model
+    // still has to be downloaded: that download shows its own progress.
+    let (local, remote, context) = std::thread::scope(|scope| {
+        let quiet = async_channel::unbounded().0;
+        let loading = crate::models::find()
+            .is_some()
+            .then(|| scope.spawn(move || load_whisper(&quiet, abort)));
+        let local = voices(&mic, &mic_regions, events, abort);
+        let remote = voices(&computer, &computer_regions, events, abort);
+        let context = match loading {
+            Some(loading) => {
+                if !loading.is_finished() {
+                    emit(events, Event::Stage("Loading model".into()));
+                }
+                loading.join().expect("loading the whisper model panicked")
+            }
+            None => load_whisper(events, abort),
+        };
+        (local, remote, context)
+    });
+    let (local, remote, context) = (local?, remote?, context?);
 
     let length = |regions: &[Region]| regions.iter().map(|r| r.end - r.start).sum::<usize>();
     let total = (length(&mic_regions) + length(&computer_regions)).max(1) as f64;
