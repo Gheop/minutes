@@ -1,0 +1,32 @@
+{
+ "input": "AMI ES2004a call, first 5 min",
+ "runs": 10,
+ "commit": "d67141b",
+ "build": "--features cuda, CUDAARCHS=86",
+ "machine": "Core Ultra 7 155H, RTX 2050 4 GB, Fedora 44; browsers and Teams closed",
+ "command": "bench/perf.py BIN --runs 10",
+ "result": {
+  "median_s": 60.62261813199984,
+  "stdev_s": 0.25847036564720144,
+  "min_s": 60.016345692998584,
+  "max_s": 60.82872274100009,
+  "rss_max_mb": 902.82421875,
+  "stages_median_s": {
+   "Finding speakers": 30.5,
+   "Loading model": 3.0999999999999996,
+   "Transcribing": 26.716820773499787
+  },
+  "runs": [
+   60.6609843039987,
+   60.016345692998584,
+   60.637592379000125,
+   60.82872274100009,
+   60.339774901000055,
+   60.57692966999821,
+   60.719282997000846,
+   60.6279404099987,
+   60.617295854000986,
+   60.17067347500051
+  ]
+ }
+}

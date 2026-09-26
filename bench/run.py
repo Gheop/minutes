@@ -7,6 +7,7 @@
 --case    only these cases (default: all)
 --ami     also a real meeting from the AMI corpus, downloaded to bench/.cache
 --ami-minutes  how much of that meeting (default 5, 0 for all 17 minutes)
+--ami-meeting  another AMI meeting than ES2004a, to check a change on audio it was not tuned on
 --json    write the scores to FILE, to compare two binaries or models later
 --check   fail (exit 1) when a case scores below bench/thresholds.json
 --model   the whisper model to use (default: the app's own setting)
@@ -266,13 +267,14 @@ def main():
     parser.add_argument("--case", nargs="*")
     parser.add_argument("--ami", action="store_true")
     parser.add_argument("--ami-minutes", type=int, default=5)
+    parser.add_argument("--ami-meeting", default="ES2004a", help="which AMI meeting (one with a test RTTM, e.g. IS1009a)")
     parser.add_argument("--json")
     parser.add_argument("--check", action="store_true")
     parser.add_argument("--model")
     parser.add_argument("--keep")
     args = parser.parse_args()
 
-    cases = list(fixtures()) + (ami_cases(args.ami_minutes) if args.ami else [])
+    cases = list(fixtures()) + (ami_cases(args.ami_minutes, args.ami_meeting) if args.ami else [])
     if args.case:
         cases = [c for c in cases if c["name"] in args.case]
     model = ["--model", args.model] if args.model else []
