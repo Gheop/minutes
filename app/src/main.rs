@@ -3,7 +3,9 @@
 
 mod window;
 
+use std::cell::Cell;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use adw::prelude::*;
 use gettextrs::{LocaleCategory, gettext};
@@ -11,12 +13,24 @@ use gtk::glib;
 use minutes_engine::{diarize, transcribe};
 
 pub const APP_ID: &str = "io.github.gheop.Minutes";
+
+/// Started with `--background` (at login): Minutes stays without a window to
+/// notice calls, and closing the window hides it.
+pub static BACKGROUND: AtomicBool = AtomicBool::new(false);
 const DOMAIN: &str = "minutes";
 
-/// The translations built next to the binary while developing, else the installed ones.
+/// Where the translations are: `share/locale` next to the binary's `bin`
+/// (`/usr`, `~/.local`), else the ones built with it while developing, else
+/// the system's.
 fn locale_dir() -> PathBuf {
+    let installed = std::env::current_exe()
+        .ok()
+        .and_then(|exe| Some(exe.parent()?.parent()?.join("share/locale")))
+        .filter(|dir| dir.join("fr/LC_MESSAGES/minutes.mo").is_file());
     let built = PathBuf::from(concat!(env!("OUT_DIR"), "/locale"));
-    if built.is_dir() { built } else { PathBuf::from("/usr/share/locale") }
+    installed
+        .or_else(|| built.is_dir().then_some(built))
+        .unwrap_or_else(|| PathBuf::from("/usr/share/locale"))
 }
 
 fn main() -> glib::ExitCode {
@@ -37,13 +51,26 @@ fn main() -> glib::ExitCode {
     glib::set_application_name(&gettext("Minutes"));
 
     let app = adw::Application::builder().application_id(APP_ID).build();
+    let background = args.get(1).is_some_and(|a| a == "--background");
+    if background {
+        BACKGROUND.store(true, Ordering::Relaxed);
+        // For the life of the process: without a window shown, GTK would quit.
+        std::mem::forget(app.hold());
+    }
     // `minutes <meeting folder or file>` opens that meeting.
     let open = args.get(1).map(PathBuf::from).filter(|p| p.exists());
+    // Started in the background, the first activation only sets things up;
+    // later ones (the launcher, a notification) show the window.
+    let quiet_start = Cell::new(background);
     app.connect_activate(move |app| {
         let window = app
-            .active_window()
-            .and_downcast::<window::MinutesWindow>()
+            .windows()
+            .into_iter()
+            .find_map(|w| w.downcast::<window::MinutesWindow>().ok())
             .unwrap_or_else(|| window::MinutesWindow::new(app));
+        if quiet_start.replace(false) {
+            return;
+        }
         if let Some(path) = &open {
             window.show_meeting(path);
         }
@@ -78,9 +105,11 @@ fn add_outside_actions(app: &adw::Application) {
     // The last lines of the preview while recording: (time, speaker, text).
     let live = gtk::gio::SimpleAction::new_stateful("live", None, &Vec::<(String, String, String)>::new().to_variant());
     app.add_action(&live);
+    // The window may be hidden (Minutes in the background): no active window then.
     let window = |app: &adw::Application| {
-        app.active_window()
-            .and_downcast::<window::MinutesWindow>()
+        app.windows()
+            .into_iter()
+            .find_map(|w| w.downcast::<window::MinutesWindow>().ok())
             .unwrap_or_else(|| window::MinutesWindow::new(app))
     };
     for name in ["record", "pause", "stop", "copy-preview"] {

@@ -1,7 +1,7 @@
 //! The main window: the meetings on the left; on the right, getting ready,
 //! recording, writing the transcript, and reading it.
 
-use std::cell::{OnceCell, RefCell};
+use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
@@ -85,9 +85,11 @@ mod imp {
         #[template_child]
         pub preview_actions: TemplateChild<gtk::Box>,
 
-        /// The mic and the computer audio, listened to from the start so the
-        /// meters show that both arrive before anything is recorded.
-        pub sources: OnceCell<(Source, Source)>,
+        /// The mic and the computer audio, listened to while the window is
+        /// shown (the meters show that both arrive before anything is
+        /// recorded) or a recording goes on; closed otherwise, so the
+        /// microphone is not in use while Minutes waits in the background.
+        pub sources: RefCell<Option<(Source, Source)>>,
         pub recording: RefCell<Option<Recording>>,
         pub abort: RefCell<Option<Abort>>,
         /// The transcript on screen, for Copy.
@@ -130,6 +132,13 @@ mod imp {
             // for recovery), but it would surprise: stop first.
             if self.recording.borrow().is_some() || self.abort.borrow().is_some() {
                 self.obj().toast(&gettext("Stop the recording before closing"));
+                return glib::Propagation::Stop;
+            }
+            // In the background, Minutes stays to notice calls; the window
+            // only goes out of sight, and the microphone is let go.
+            if crate::BACKGROUND.load(Ordering::Relaxed) {
+                self.obj().set_visible(false);
+                self.obj().release_sources();
                 return glib::Propagation::Stop;
             }
             glib::Propagation::Proceed
@@ -175,10 +184,9 @@ impl MinutesWindow {
         ]);
         self.set_busy(false);
 
-        let _ = imp.sources.set((
-            Source::spawn("@DEFAULT_SOURCE@"),
-            Source::spawn("@DEFAULT_MONITOR@"),
-        ));
+        self.connect_map(|win| {
+            win.sources();
+        });
         let weak = self.downgrade();
         glib::timeout_add_local(Duration::from_millis(50), move || {
             let Some(win) = weak.upgrade() else {
@@ -276,6 +284,26 @@ impl MinutesWindow {
         }
     }
 
+    /// The mic and the computer audio, started when they are not listened to yet.
+    fn sources(&self) -> (Source, Source) {
+        self.imp()
+            .sources
+            .borrow_mut()
+            .get_or_insert_with(|| (Source::spawn("@DEFAULT_SOURCE@"), Source::spawn("@DEFAULT_MONITOR@")))
+            .clone()
+    }
+
+    /// Lets the microphone and the computer audio go, unless a recording needs them.
+    fn release_sources(&self) {
+        if self.imp().recording.borrow().is_some() {
+            return;
+        }
+        if let Some((mic, system)) = self.imp().sources.borrow_mut().take() {
+            mic.stop();
+            system.stop();
+        }
+    }
+
     fn toast(&self, message: &str) {
         self.imp().toasts.add_toast(adw::Toast::new(message));
     }
@@ -301,7 +329,7 @@ impl MinutesWindow {
     /// The meters and the clock, twenty times a second.
     fn tick(&self) {
         let imp = self.imp();
-        let Some((mic, system)) = imp.sources.get() else {
+        let Some((mic, system)) = imp.sources.borrow().clone() else {
             return;
         };
         let (mic, system) = (audio::to_meter(mic.recent_peak(3)), audio::to_meter(system.recent_peak(3)));
@@ -338,9 +366,7 @@ impl MinutesWindow {
         if imp.recording.borrow().is_some() {
             return;
         }
-        let Some((mic, system)) = imp.sources.get() else {
-            return;
-        };
+        let (mic, system) = self.sources();
         let now = glib::DateTime::now_local().ok();
         let title = match imp.title_row.text().trim() {
             "" => now
@@ -385,7 +411,7 @@ impl MinutesWindow {
 
     fn toggle_pause(&self) {
         let imp = self.imp();
-        let Some((mic, system)) = imp.sources.get() else {
+        let Some((mic, system)) = imp.sources.borrow().clone() else {
             return;
         };
         let mut recording = imp.recording.borrow_mut();
@@ -421,11 +447,14 @@ impl MinutesWindow {
         let Some(recording) = imp.recording.borrow_mut().take() else {
             return;
         };
-        if let Some((mic, system)) = imp.sources.get() {
+        if let Some((mic, system)) = imp.sources.borrow().clone() {
             mic.stop_recording();
             system.stop_recording();
             mic.set_paused(false);
             system.set_paused(false);
+        }
+        if !self.is_visible() {
+            self.release_sources();
         }
         let abort = Abort::default();
         *imp.abort.borrow_mut() = Some(abort.clone());
