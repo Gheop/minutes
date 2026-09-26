@@ -101,10 +101,15 @@ fn main() -> glib::ExitCode {
 /// `pause`, `stop`, `mute-mic`, `copy-preview` and `open-meeting` (a folder)
 /// for the window.
 fn add_outside_actions(app: &adw::Application) {
-    let status = gtk::gio::SimpleAction::new_stateful("status", None, &("idle", 0i64, 0.0f64).to_variant());
+    let status =
+        gtk::gio::SimpleAction::new_stateful("status", None, &("idle", 0i64, 0.0f64).to_variant());
     app.add_action(&status);
     // The last lines of the preview while recording: (time, speaker, text).
-    let live = gtk::gio::SimpleAction::new_stateful("live", None, &Vec::<(String, String, String)>::new().to_variant());
+    let live = gtk::gio::SimpleAction::new_stateful(
+        "live",
+        None,
+        &Vec::<(String, String, String)>::new().to_variant(),
+    );
     app.add_action(&live);
     // Whether you muted your microphone in Minutes.
     let mute = gtk::gio::SimpleAction::new_stateful("mute", None, &false.to_variant());
@@ -160,7 +165,10 @@ fn screenshot_and_quit(window: &gtk::Window, path: PathBuf) {
             texture.save_to_png(&path).ok()
         });
         if saved.is_none() {
-            eprintln!("minutes: could not save the screenshot to {}", path.display());
+            eprintln!(
+                "minutes: could not save the screenshot to {}",
+                path.display()
+            );
         }
         window.application().inspect(|app| app.quit());
     });

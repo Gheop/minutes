@@ -44,7 +44,9 @@ pub struct TeamsSeen {
 impl TeamsSeen {
     /// The name of the other side, when a single person was there.
     fn other(&self) -> Option<&str> {
-        (self.others.len() == 1).then(|| self.others.iter().next().map(String::as_str)).flatten()
+        (self.others.len() == 1)
+            .then(|| self.others.iter().next().map(String::as_str))
+            .flatten()
     }
 }
 
@@ -160,7 +162,8 @@ mod imp {
             // Closing while recording would lose nothing (the raw audio stays
             // for recovery), but it would surprise: stop first.
             if self.recording.borrow().is_some() || self.abort.borrow().is_some() {
-                self.obj().toast(&gettext("Stop the recording before closing"));
+                self.obj()
+                    .toast(&gettext("Stop the recording before closing"));
                 return glib::Propagation::Stop;
             }
             // In the background, Minutes stays to notice calls; the window
@@ -191,9 +194,13 @@ impl MinutesWindow {
 
     fn setup(&self) {
         let imp = self.imp();
-        let names: Vec<String> = LANGUAGES.iter().map(|(code, _)| language_name(code)).collect();
-        imp.language_row
-            .set_model(Some(&gtk::StringList::new(&names.iter().map(String::as_str).collect::<Vec<_>>())));
+        let names: Vec<String> = LANGUAGES
+            .iter()
+            .map(|(code, _)| language_name(code))
+            .collect();
+        imp.language_row.set_model(Some(&gtk::StringList::new(
+            &names.iter().map(String::as_str).collect::<Vec<_>>(),
+        )));
 
         let action = |name: &str, run: fn(&MinutesWindow)| {
             gio::ActionEntry::builder(name)
@@ -260,7 +267,11 @@ impl MinutesWindow {
                     return;
                 };
                 let now = glib::monotonic_time() as f64 / 1e6;
-                let changes = win.imp().calls.borrow_mut().update(now, &calls::calls_in(&dump));
+                let changes = win
+                    .imp()
+                    .calls
+                    .borrow_mut()
+                    .update(now, &calls::calls_in(&dump));
                 for change in changes {
                     win.call_changed(change);
                 }
@@ -280,7 +291,9 @@ impl MinutesWindow {
         }
         self.stop();
         let notification = gio::Notification::new(&gettext("Recording stopped"));
-        notification.set_body(Some(&gettext("The call in %s ended; the transcript is being written.").replace("%s", name)));
+        notification.set_body(Some(
+            &gettext("The call in %s ended; the transcript is being written.").replace("%s", name),
+        ));
         app.send_notification(Some("call"), &notification);
     }
 
@@ -328,7 +341,12 @@ impl MinutesWindow {
         self.imp()
             .sources
             .borrow_mut()
-            .get_or_insert_with(|| (Source::spawn("@DEFAULT_SOURCE@"), Source::spawn("@DEFAULT_MONITOR@")))
+            .get_or_insert_with(|| {
+                (
+                    Source::spawn("@DEFAULT_SOURCE@"),
+                    Source::spawn("@DEFAULT_MONITOR@"),
+                )
+            })
             .clone()
     }
 
@@ -372,7 +390,10 @@ impl MinutesWindow {
         let Some((mic, system)) = imp.sources.borrow().clone() else {
             return;
         };
-        let (mic, system) = (audio::to_meter(mic.recent_peak(3)), audio::to_meter(system.recent_peak(3)));
+        let (mic, system) = (
+            audio::to_meter(mic.recent_peak(3)),
+            audio::to_meter(system.recent_peak(3)),
+        );
         for (bar, value) in [
             (&imp.ready_mic_level, mic),
             (&imp.mic_level, mic),
@@ -382,7 +403,8 @@ impl MinutesWindow {
             bar.set_value(value);
         }
         if let Some(recording) = imp.recording.borrow().as_ref() {
-            imp.recording_page.set_title(&clock(recording.elapsed().as_secs()));
+            imp.recording_page
+                .set_title(&clock(recording.elapsed().as_secs()));
         }
     }
 
@@ -437,7 +459,10 @@ impl MinutesWindow {
         imp.muted_here.set(false);
         // Your name carries over from one call to the next.
         let me = imp.teams.borrow().me.clone();
-        *imp.teams.borrow_mut() = TeamsSeen { me, ..TeamsSeen::default() };
+        *imp.teams.borrow_mut() = TeamsSeen {
+            me,
+            ..TeamsSeen::default()
+        };
         self.apply_mute();
         self.start_preview(&staging, &note.language);
         *imp.recording.borrow_mut() = Some(Recording {
@@ -450,7 +475,8 @@ impl MinutesWindow {
         self.watch_teams();
         imp.content_page.set_title(&title);
         imp.pause_button.set_label(&gettext("_Pause"));
-        imp.recording_page.set_description(Some(&gettext("Recording")));
+        imp.recording_page
+            .set_description(Some(&gettext("Recording")));
         imp.pages.set_visible_child_name("recording");
         self.set_busy(true);
     }
@@ -482,10 +508,16 @@ impl MinutesWindow {
         } else {
             self.publish("recording", glib::real_time() / 1_000_000 - recorded, 0.0);
         }
-        imp.pause_button
-            .set_label(&if paused { gettext("_Resume") } else { gettext("_Pause") });
-        imp.recording_page
-            .set_description(Some(&if paused { gettext("Paused") } else { gettext("Recording") }));
+        imp.pause_button.set_label(&if paused {
+            gettext("_Resume")
+        } else {
+            gettext("_Pause")
+        });
+        imp.recording_page.set_description(Some(&if paused {
+            gettext("Paused")
+        } else {
+            gettext("Recording")
+        }));
     }
 
     fn stop(&self) {
@@ -533,7 +565,10 @@ impl MinutesWindow {
                     win.show_ready();
                 }
                 Err(e) => {
-                    win.toast(&format!("{}: {e}", gettext("Could not write the transcript")));
+                    win.toast(&format!(
+                        "{}: {e}",
+                        gettext("Could not write the transcript")
+                    ));
                     win.show_ready();
                 }
             }
@@ -551,9 +586,11 @@ impl MinutesWindow {
             .await
             .unwrap_or_default();
         let (audio_out, audio_staging) = (out.clone(), staging.clone());
-        let saved = gio::spawn_blocking(move || session::save_audio(&audio_staging, &audio_out, note.format))
-            .await
-            .unwrap_or((false, false));
+        let saved = gio::spawn_blocking(move || {
+            session::save_audio(&audio_staging, &audio_out, note.format)
+        })
+        .await
+        .unwrap_or((false, false));
         self.save_preview(&out, &note, lines);
         let mut manifest = Manifest {
             title: note.title.clone(),
@@ -564,7 +601,9 @@ impl MinutesWindow {
             speakers: {
                 let seen = self.imp().teams.borrow();
                 vec![
-                    seen.me.clone().unwrap_or_else(|| meeting::DEFAULT_YOU.to_owned()),
+                    seen.me
+                        .clone()
+                        .unwrap_or_else(|| meeting::DEFAULT_YOU.to_owned()),
                     seen.other().unwrap_or(meeting::DEFAULT_REMOTE).to_owned(),
                 ]
             },
@@ -582,7 +621,14 @@ impl MinutesWindow {
         let (tracks, dir) = (staging.clone(), out.clone());
         std::thread::spawn(move || {
             let language = manifest.language.clone();
-            let result = session::transcribe_into(&tracks, &dir, &mut manifest, &language, &events_tx, &abort);
+            let result = session::transcribe_into(
+                &tracks,
+                &dir,
+                &mut manifest,
+                &language,
+                &events_tx,
+                &abort,
+            );
             let _ = done_tx.send_blocking(result);
             let _ = events_tx.send_blocking(Event::Finished);
         });
@@ -621,7 +667,13 @@ impl MinutesWindow {
         let imp = self.imp();
         imp.meetings.remove_all();
         let mut dirs: Vec<PathBuf> = std::fs::read_dir(session::meetings_root())
-            .map(|entries| entries.flatten().map(|e| e.path()).filter(|p| p.is_dir()).collect())
+            .map(|entries| {
+                entries
+                    .flatten()
+                    .map(|e| e.path())
+                    .filter(|p| p.is_dir())
+                    .collect()
+            })
             .unwrap_or_default();
         dirs.sort();
         dirs.reverse();
@@ -657,7 +709,11 @@ impl MinutesWindow {
             }
         }
         if imp.transcript.first_child().is_none() {
-            imp.transcript.append(&transcript_row("", "", &gettext("Nobody was heard in this meeting.")));
+            imp.transcript.append(&transcript_row(
+                "",
+                "",
+                &gettext("Nobody was heard in this meeting."),
+            ));
         }
         *imp.markdown.borrow_mut() = markdown;
         imp.content_page.set_title(&manifest.title);
@@ -671,7 +727,9 @@ impl MinutesWindow {
         let seen = self.imp().teams.borrow();
         match label {
             meeting::DEFAULT_YOU => seen.me.clone().unwrap_or_else(|| gettext("You")),
-            meeting::DEFAULT_REMOTE => seen.other().map_or_else(|| gettext("Others"), str::to_owned),
+            meeting::DEFAULT_REMOTE => seen
+                .other()
+                .map_or_else(|| gettext("Others"), str::to_owned),
             other => other.to_owned(),
         }
     }
@@ -694,7 +752,11 @@ impl MinutesWindow {
         } else {
             gettext("_Mute My Microphone")
         });
-        let paused = imp.recording.borrow().as_ref().is_some_and(|r| r.since.is_none());
+        let paused = imp
+            .recording
+            .borrow()
+            .as_ref()
+            .is_some_and(|r| r.since.is_none());
         if imp.recording.borrow().is_some() && !paused {
             imp.recording_page.set_description(Some(&if !muted {
                 gettext("Recording")
@@ -721,7 +783,9 @@ impl MinutesWindow {
     /// While recording, reads Teams twice a second when `teams_debug_port`
     /// is set: whether you are muted there, and who is in the call.
     fn watch_teams(&self) {
-        let Some(port) = minutes_engine::models::config_value("teams_debug_port").and_then(|p| p.parse::<u16>().ok()) else {
+        let Some(port) = minutes_engine::models::config_value("teams_debug_port")
+            .and_then(|p| p.parse::<u16>().ok())
+        else {
             return;
         };
         let weak = self.downgrade();
@@ -729,7 +793,10 @@ impl MinutesWindow {
             // Reads in a row showing Teams out of the call, after it was in one.
             let (mut was_in_call, mut out) = (false, 0);
             loop {
-                let snapshot = gio::spawn_blocking(move || teams::snapshot(port)).await.ok().flatten();
+                let snapshot = gio::spawn_blocking(move || teams::snapshot(port))
+                    .await
+                    .ok()
+                    .flatten();
                 let Some(win) = weak.upgrade() else {
                     return;
                 };
@@ -792,7 +859,12 @@ impl MinutesWindow {
                 };
                 match update {
                     Update::Lines(lines) => win.add_live(lines),
-                    Update::Draft { speaker, start_ms, text, .. } => win.set_draft(speaker, start_ms, text),
+                    Update::Draft {
+                        speaker,
+                        start_ms,
+                        text,
+                        ..
+                    } => win.set_draft(speaker, start_ms, text),
                 }
             }
         });
@@ -807,7 +879,11 @@ impl MinutesWindow {
         }
         for line in &lines {
             let time = clock((line.start_ms / 1000).max(0) as u64);
-            imp.live_list.append(&transcript_row(&time, &self.side_name(&line.speaker), &line.text));
+            imp.live_list.append(&transcript_row(
+                &time,
+                &self.side_name(&line.speaker),
+                &line.text,
+            ));
         }
         for (_, _, _, row) in imp.drafts.borrow().iter() {
             imp.live_list.append(row);
@@ -857,10 +933,20 @@ impl MinutesWindow {
         let mut lines: Vec<(String, String, String)> = live
             .iter()
             .skip(live.len().saturating_sub(40))
-            .map(|l| (clock((l.start_ms / 1000).max(0) as u64), self.side_name(&l.speaker), l.text.clone()))
+            .map(|l| {
+                (
+                    clock((l.start_ms / 1000).max(0) as u64),
+                    self.side_name(&l.speaker),
+                    l.text.clone(),
+                )
+            })
             .collect();
         for (speaker, start_ms, text, _) in self.imp().drafts.borrow().iter() {
-            lines.push((clock((start_ms / 1000).max(0) as u64), self.side_name(speaker), format!("{text} …")));
+            lines.push((
+                clock((start_ms / 1000).max(0) as u64),
+                self.side_name(speaker),
+                format!("{text} …"),
+            ));
         }
         action.set_state(&lines.to_variant());
     }
@@ -877,8 +963,18 @@ impl MinutesWindow {
             .map(|s| s.to_string())
             .unwrap_or_default();
         // With the names Teams gave, as the preview showed them.
-        let lines = lines.into_iter().map(|l| Segment { speaker: self.side_name(&l.speaker), ..l }).collect();
-        let preview = Transcript { segments: lines, language: note.language.clone(), duration_secs: 0 };
+        let lines = lines
+            .into_iter()
+            .map(|l| Segment {
+                speaker: self.side_name(&l.speaker),
+                ..l
+            })
+            .collect();
+        let preview = Transcript {
+            segments: lines,
+            language: note.language.clone(),
+            duration_secs: 0,
+        };
         let title = format!("{} ({})", note.title, gettext("preview"));
         let path = out.join(PREVIEW_FILE);
         if std::fs::write(&path, transcribe::to_markdown(&title, &date, &preview)).is_ok() {
@@ -968,17 +1064,23 @@ fn transcript_row(time: &str, speaker: &str, text: &str) -> gtk::ListBoxRow {
         .selectable(true)
         .build();
     body.append(&what);
-    gtk::ListBoxRow::builder().child(&body).activatable(false).build()
+    gtk::ListBoxRow::builder()
+        .child(&body)
+        .activatable(false)
+        .build()
 }
 
 /// The preview written during the call, next to the final transcript.
 pub const PREVIEW_FILE: &str = "transcript-preview.md";
 
-
 /// `mm:ss`, or `h:mm:ss` from an hour on.
 pub fn clock(secs: u64) -> String {
     let (h, m, s) = (secs / 3600, secs / 60 % 60, secs % 60);
-    if h > 0 { format!("{h}:{m:02}:{s:02}") } else { format!("{m:02}:{s:02}") }
+    if h > 0 {
+        format!("{h}:{m:02}:{s:02}")
+    } else {
+        format!("{m:02}:{s:02}")
+    }
 }
 
 fn date_of(started_at: i64) -> String {
@@ -1032,7 +1134,10 @@ mod tests {
     fn the_window_builds_and_shows_a_meeting() {
         if gtk::init().is_err() {
             // The CI gives it a display; there, not running is a failure.
-            assert!(std::env::var_os("MINUTES_REQUIRE_DISPLAY").is_none(), "no display for the window test");
+            assert!(
+                std::env::var_os("MINUTES_REQUIRE_DISPLAY").is_none(),
+                "no display for the window test"
+            );
             eprintln!("no display: window test skipped");
             return;
         }
@@ -1046,7 +1151,10 @@ mod tests {
         let imp = win.imp();
 
         assert_eq!(imp.pages.visible_child_name().as_deref(), Some("ready"));
-        assert_eq!(imp.language_row.model().unwrap().n_items() as usize, LANGUAGES.len());
+        assert_eq!(
+            imp.language_row.model().unwrap().n_items() as usize,
+            LANGUAGES.len()
+        );
         assert!(win.is_action_enabled("record"));
         assert!(!win.is_action_enabled("stop"));
         assert!(!win.is_action_enabled("pause"));
@@ -1059,18 +1167,27 @@ mod tests {
             speaker: speaker.into(),
             text: text.into(),
         };
-        win.add_live(vec![line(1000, "You", "Bonjour."), line(4000, "Remote", "Salut.")]);
+        win.add_live(vec![
+            line(1000, "You", "Bonjour."),
+            line(4000, "Remote", "Salut."),
+        ]);
         assert!(imp.live_group.property::<bool>("visible"));
         assert_eq!(imp.live.borrow().len(), 2);
         assert!(imp.live_list.row_at_index(1).is_some() && imp.live_list.row_at_index(2).is_none());
         // A draft goes below, stays below new lines, and goes when emptied.
         win.set_draft("Remote", 6000, "Je voulais dire".into());
         win.add_live(vec![line(5000, "You", "Oui.")]);
-        assert_eq!(imp.live_list.row_at_index(3), Some(imp.drafts.borrow()[0].3.clone()));
+        assert_eq!(
+            imp.live_list.row_at_index(3),
+            Some(imp.drafts.borrow()[0].3.clone())
+        );
         win.set_draft("Remote", 6000, String::new());
         assert!(imp.drafts.borrow().is_empty() && imp.live_list.row_at_index(3).is_none());
 
-        let dir = std::env::temp_dir().join(format!("minutes-window-{}/202609261000 Budget", std::process::id()));
+        let dir = std::env::temp_dir().join(format!(
+            "minutes-window-{}/202609261000 Budget",
+            std::process::id()
+        ));
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(
             dir.join("transcript.md"),
@@ -1078,7 +1195,10 @@ mod tests {
         )
         .unwrap();
         win.show_meeting(&dir);
-        assert_eq!(imp.pages.visible_child_name().as_deref(), Some("transcript"));
+        assert_eq!(
+            imp.pages.visible_child_name().as_deref(),
+            Some("transcript")
+        );
         assert_eq!(imp.content_page.title(), "Budget");
         assert!(imp.copy_button.property::<bool>("visible"));
         let mut rows = 0;

@@ -3484,7 +3484,6 @@ fn load_css() {
     }
 }
 
-
 fn format_elapsed(secs: i64) -> String {
     let (h, m, s) = (secs / 3600, secs / 60 % 60, secs % 60);
     if h > 0 {

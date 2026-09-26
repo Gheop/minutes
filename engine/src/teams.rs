@@ -55,7 +55,10 @@ impl Snapshot {
         if self.tiles.is_empty() {
             return None;
         }
-        let mut untiled = self.participants.iter().filter(|p| !self.tiles.contains(&p.name));
+        let mut untiled = self
+            .participants
+            .iter()
+            .filter(|p| !self.tiles.contains(&p.name));
         match (untiled.next(), untiled.next()) {
             (Some(me), None) => Some(me.name.as_str()),
             _ => None,
@@ -75,7 +78,11 @@ impl Snapshot {
         match (me, self.participants.is_empty()) {
             // Without your name, only the stage can tell others from you.
             (None, false) => self.tiles.clone(),
-            _ => names.into_iter().filter(|n| Some(*n) != me).map(str::to_owned).collect(),
+            _ => names
+                .into_iter()
+                .filter(|n| Some(*n) != me)
+                .map(str::to_owned)
+                .collect(),
         }
     }
 }
@@ -94,12 +101,15 @@ pub fn snapshot(port: u16) -> Option<Snapshot> {
     let pages: serde_json::Value = serde_json::from_str(&list).ok()?;
     let socket = pages.as_array()?.iter().find_map(|page| {
         let url = page["url"].as_str()?;
-        (page["type"] == "page" && (url.contains("teams.cloud.microsoft") || url.contains("teams.microsoft.com")))
-            .then(|| page["webSocketDebuggerUrl"].as_str().map(str::to_owned))
-            .flatten()
+        (page["type"] == "page"
+            && (url.contains("teams.cloud.microsoft") || url.contains("teams.microsoft.com")))
+        .then(|| page["webSocketDebuggerUrl"].as_str().map(str::to_owned))
+        .flatten()
     })?;
     // Only a local port: the address must be 127.0.0.1, whatever the list says.
-    let path = socket.strip_prefix(&format!("ws://127.0.0.1:{port}"))?.to_owned();
+    let path = socket
+        .strip_prefix(&format!("ws://127.0.0.1:{port}"))?
+        .to_owned();
     let stream = TcpStream::connect(("127.0.0.1", port)).ok()?;
     stream.set_read_timeout(Some(Duration::from_secs(2))).ok()?;
     let (mut ws, _) = tungstenite::client(format!("ws://127.0.0.1:{port}{path}"), stream).ok()?;
@@ -108,10 +118,13 @@ pub fn snapshot(port: u16) -> Option<Snapshot> {
         "method": "Runtime.evaluate",
         "params": {"expression": READ, "returnByValue": true},
     });
-    ws.send(tungstenite::Message::text(request.to_string())).ok()?;
+    ws.send(tungstenite::Message::text(request.to_string()))
+        .ok()?;
     let value = loop {
         let message = ws.read().ok()?;
-        let Ok(text) = message.to_text() else { continue };
+        let Ok(text) = message.to_text() else {
+            continue;
+        };
         let reply: serde_json::Value = serde_json::from_str(text).ok()?;
         if reply["id"] == 1 {
             break reply["result"]["result"]["value"].clone();
@@ -133,7 +146,9 @@ pub fn parse(value: &serde_json::Value) -> Snapshot {
             let label = entry[1].as_str().unwrap_or("").to_lowercase();
             (!name.is_empty()).then(|| Participant {
                 name: name.to_owned(),
-                muted: ["micro désactivé", "muted", "microphone off", "mic off"].iter().any(|m| label.contains(m)),
+                muted: ["micro désactivé", "muted", "microphone off", "mic off"]
+                    .iter()
+                    .any(|m| label.contains(m)),
             })
         })
         .collect();
@@ -141,7 +156,12 @@ pub fn parse(value: &serde_json::Value) -> Snapshot {
         .as_array()
         .into_iter()
         .flatten()
-        .filter_map(|t| t[0].as_str().map(str::trim).filter(|n| !n.is_empty()).map(str::to_owned))
+        .filter_map(|t| {
+            t[0].as_str()
+                .map(str::trim)
+                .filter(|n| !n.is_empty())
+                .map(str::to_owned)
+        })
         .collect();
     Snapshot {
         in_call: state.is_some(),
@@ -155,11 +175,15 @@ pub fn parse(value: &serde_json::Value) -> Snapshot {
 /// "Image de profil de Ludovic BENOIT." or "Profile picture of Maya Okafor."
 fn name_in_avatar(label: &str) -> Option<String> {
     let label = label.trim().trim_end_matches('.');
-    ["Image de profil de ", "Profile picture of ", "Photo de profil de "]
-        .iter()
-        .find_map(|prefix| label.strip_prefix(prefix))
-        .map(|name| name.trim().to_owned())
-        .filter(|name| !name.is_empty())
+    [
+        "Image de profil de ",
+        "Profile picture of ",
+        "Photo de profil de ",
+    ]
+    .iter()
+    .find_map(|prefix| label.strip_prefix(prefix))
+    .map(|name| name.trim().to_owned())
+    .filter(|name| !name.is_empty())
 }
 
 #[cfg(test)]
@@ -224,7 +248,10 @@ mod tests {
     #[test]
     #[ignore]
     fn teams_here() {
-        let Some(port) = std::env::var("MINUTES_TEAMS_PORT").ok().and_then(|p| p.parse().ok()) else {
+        let Some(port) = std::env::var("MINUTES_TEAMS_PORT")
+            .ok()
+            .and_then(|p| p.parse().ok())
+        else {
             return;
         };
         println!("{:?}", snapshot(port));
@@ -239,7 +266,9 @@ mod tests {
 
     #[test]
     fn outside_a_call_there_is_no_call() {
-        let snapshot = parse(&serde_json::json!({"me": null, "avatar": "Profile picture of Maya Okafor.", "roster": [], "tiles": []}));
+        let snapshot = parse(
+            &serde_json::json!({"me": null, "avatar": "Profile picture of Maya Okafor.", "roster": [], "tiles": []}),
+        );
         assert!(!snapshot.in_call);
         assert!(!snapshot.muted);
         assert_eq!(snapshot.me(), Some("Maya Okafor"));

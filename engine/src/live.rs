@@ -16,8 +16,8 @@ use std::thread::JoinHandle;
 use std::time::Duration;
 
 use crate::transcribe::{
-    Abort, Downsampler, Region, Segment, WHISPER_RATE, load_preview_whisper, preview_pass, preview_regions,
-    raw_to_mono,
+    Abort, Downsampler, Region, Segment, WHISPER_RATE, load_preview_whisper, preview_pass,
+    preview_regions, raw_to_mono,
 };
 
 /// A stretch counts as ended when this much has been heard after it.
@@ -33,7 +33,12 @@ pub enum Update {
     Lines(Vec<Segment>),
     /// The stretch someone is still in, as far as it has been heard: shown
     /// until the next draft on that side replaces it; empty text clears it.
-    Draft { speaker: &'static str, start_ms: i64, heard_ms: i64, text: String },
+    Draft {
+        speaker: &'static str,
+        start_ms: i64,
+        heard_ms: i64,
+        text: String,
+    },
 }
 
 /// The preview of one recording, running in its own thread.
@@ -46,10 +51,15 @@ impl Preview {
     /// Starts previewing the recording in `staging`; what it writes goes to
     /// `updates`. Without a model for it (see `models::preview`) the preview
     /// does nothing.
-    pub fn start(staging: &Path, language: &str, updates: async_channel::Sender<Update>) -> Preview {
+    pub fn start(
+        staging: &Path,
+        language: &str,
+        updates: async_channel::Sender<Update>,
+    ) -> Preview {
         let stop: Abort = Arc::new(AtomicBool::new(false));
         let thread = crate::models::preview().map(|model| {
-            let (staging, language, stop) = (staging.to_path_buf(), language.to_owned(), stop.clone());
+            let (staging, language, stop) =
+                (staging.to_path_buf(), language.to_owned(), stop.clone());
             std::thread::spawn(move || run(&model, &staging, &language, &updates, &stop))
         });
         Preview { stop, thread }
@@ -60,7 +70,10 @@ impl Preview {
     /// being transcribed, a few seconds at most.
     pub fn finish(mut self) -> Vec<Segment> {
         self.stop.store(true, Ordering::Relaxed);
-        self.thread.take().and_then(|t| t.join().ok()).unwrap_or_default()
+        self.thread
+            .take()
+            .and_then(|t| t.join().ok())
+            .unwrap_or_default()
     }
 }
 
@@ -82,7 +95,13 @@ struct Follow {
 
 impl Follow {
     fn new(path: PathBuf) -> Self {
-        Self { path, read: 0, carry: Vec::new(), down: Downsampler::new(), samples: Vec::new() }
+        Self {
+            path,
+            read: 0,
+            carry: Vec::new(),
+            down: Downsampler::new(),
+            samples: Vec::new(),
+        }
     }
 
     fn catch_up(&mut self) {
@@ -140,7 +159,11 @@ fn run(
             preview_regions(&mic.samples[..heard], &computer.samples[..heard]);
         for (side, (track, regions, label)) in [
             (&mic_track, &mic_regions, crate::meeting::DEFAULT_YOU),
-            (&computer_track, &computer_regions, crate::meeting::DEFAULT_REMOTE),
+            (
+                &computer_track,
+                &computer_regions,
+                crate::meeting::DEFAULT_REMOTE,
+            ),
         ]
         .into_iter()
         .enumerate()
@@ -149,7 +172,15 @@ fn run(
             if ready.is_empty() {
                 continue;
             }
-            match preview_pass(&context, track, &ready, label, language, &earlier[side], stop) {
+            match preview_pass(
+                &context,
+                track,
+                &ready,
+                label,
+                language,
+                &earlier[side],
+                stop,
+            ) {
                 Ok(new) => {
                     // Whisper sometimes gives back its prompt, the text just
                     // before, for a short stretch: a line said again word for
@@ -183,17 +214,39 @@ fn run(
         if tick % 2 == 0 {
             for (side, (track, regions, label)) in [
                 (&mic_track, &mic_regions, crate::meeting::DEFAULT_YOU),
-                (&computer_track, &computer_regions, crate::meeting::DEFAULT_REMOTE),
+                (
+                    &computer_track,
+                    &computer_regions,
+                    crate::meeting::DEFAULT_REMOTE,
+                ),
             ]
             .into_iter()
             .enumerate()
             {
                 let (start, text) = match open_stretch(regions, done[side], heard) {
                     Some(open) if heard >= open.start + WHISPER_RATE => {
-                        let piece = Region { start: open.start, onset: open.onset, end: heard };
-                        let text = preview_pass(&context, track, &[piece], label, language, &earlier[side], stop)
-                            .map(|lines| lines.iter().map(|l| l.text.trim()).collect::<Vec<_>>().join(" "))
-                            .unwrap_or_default();
+                        let piece = Region {
+                            start: open.start,
+                            onset: open.onset,
+                            end: heard,
+                        };
+                        let text = preview_pass(
+                            &context,
+                            track,
+                            &[piece],
+                            label,
+                            language,
+                            &earlier[side],
+                            stop,
+                        )
+                        .map(|lines| {
+                            lines
+                                .iter()
+                                .map(|l| l.text.trim())
+                                .collect::<Vec<_>>()
+                                .join(" ")
+                        })
+                        .unwrap_or_default();
                         (open.start, text)
                     }
                     _ => (heard, String::new()),
@@ -227,7 +280,11 @@ fn ready_batch(regions: &[Region], done: usize, heard: usize, track: &[f32]) -> 
         let settled = heard.saturating_sub(SETTLED);
         if settled >= open.start + LONG {
             let at = quietest(track, open.start + LONG / 2, settled);
-            ready.push(Region { start: open.start, onset: open.onset, end: at });
+            ready.push(Region {
+                start: open.start,
+                onset: open.onset,
+                end: at,
+            });
         }
     }
     ready
@@ -238,13 +295,19 @@ fn pending(regions: &[Region], done: usize) -> Vec<Region> {
     regions
         .iter()
         .filter(|r| r.end > done)
-        .map(|r| Region { start: r.start.max(done), onset: r.onset.max(done), end: r.end })
+        .map(|r| Region {
+            start: r.start.max(done),
+            onset: r.onset.max(done),
+            end: r.end,
+        })
         .collect()
 }
 
 /// The stretch someone is still in, past `done`.
 fn open_stretch(regions: &[Region], done: usize, heard: usize) -> Option<Region> {
-    pending(regions, done).into_iter().find(|r| r.end + SETTLED > heard)
+    pending(regions, done)
+        .into_iter()
+        .find(|r| r.end + SETTLED > heard)
 }
 
 /// The start of the quietest 30 ms of `track[from..to]`: a pause between words.
@@ -266,7 +329,11 @@ mod tests {
 
     fn region(start_secs: f64, end_secs: f64) -> Region {
         let at = |s: f64| (s * WHISPER_RATE as f64) as usize;
-        Region { start: at(start_secs), onset: at(start_secs), end: at(end_secs) }
+        Region {
+            start: at(start_secs),
+            onset: at(start_secs),
+            end: at(end_secs),
+        }
     }
 
     /// Records a call as the app would, ten times faster, with the preview
@@ -275,12 +342,17 @@ mod tests {
     #[test]
     #[ignore]
     fn preview_follows_a_recording() {
-        let (Ok(mic), Ok(computer)) = (std::env::var("MINUTES_PREVIEW_MIC"), std::env::var("MINUTES_PREVIEW_COMPUTER")) else {
+        let (Ok(mic), Ok(computer)) = (
+            std::env::var("MINUTES_PREVIEW_MIC"),
+            std::env::var("MINUTES_PREVIEW_COMPUTER"),
+        ) else {
             return;
         };
         let raw = |path: &str| {
             let out = std::process::Command::new("ffmpeg")
-                .args(["-v", "error", "-i", path, "-ac", "2", "-ar", "48000", "-f", "s16le", "-"])
+                .args([
+                    "-v", "error", "-i", path, "-ac", "2", "-ar", "48000", "-f", "s16le", "-",
+                ])
                 .output()
                 .unwrap();
             out.stdout
@@ -294,7 +366,10 @@ mod tests {
         let preview = Preview::start(&staging, "en", tx);
         // A second of audio every 100 ms, or every second with MINUTES_PREVIEW_SPEED=1.
         let second = 48_000 * 4;
-        let pace = std::env::var("MINUTES_PREVIEW_SPEED").ok().and_then(|s| s.parse::<u64>().ok()).unwrap_or(10);
+        let pace = std::env::var("MINUTES_PREVIEW_SPEED")
+            .ok()
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or(10);
         let mut delays = Vec::new();
         let mut draft_ages = Vec::new();
         let mut written = 0;
@@ -306,10 +381,16 @@ mod tests {
             while let Ok(update) = rx.try_recv() {
                 let lines = match update {
                     Update::Lines(lines) => lines,
-                    Update::Draft { heard_ms, text, speaker, .. } => {
+                    Update::Draft {
+                        heard_ms,
+                        text,
+                        speaker,
+                        ..
+                    } => {
                         if !text.is_empty() {
                             // How much of the call the draft is behind.
-                            draft_ages.push(written as f64 / second as f64 - heard_ms as f64 / 1000.0);
+                            draft_ages
+                                .push(written as f64 / second as f64 - heard_ms as f64 / 1000.0);
                             println!("  draft {speaker}: {text}");
                         }
                         continue;
@@ -374,14 +455,20 @@ mod tests {
         let secs = |s: f64| (s * WHISPER_RATE as f64) as usize;
         // Talking from 0 s on, with a breath at 4 s.
         let mut track = vec![0.1f32; secs(40.0)];
-        track[secs(4.0)..secs(4.1)].iter_mut().for_each(|x| *x = 0.0);
+        track[secs(4.0)..secs(4.1)]
+            .iter_mut()
+            .for_each(|x| *x = 0.0);
         let going = [region(0.0, 7.0)];
         // Not long enough yet.
         assert!(ready_batch(&going, 0, secs(5.0), &track).is_empty());
         // Long enough: the part up to the breath goes.
         let cut = ready_batch(&going, 0, secs(7.5), &track);
         assert_eq!(cut.len(), 1);
-        assert!((secs(3.95)..=secs(4.1)).contains(&cut[0].end), "cut at {}", cut[0].end);
+        assert!(
+            (secs(3.95)..=secs(4.1)).contains(&cut[0].end),
+            "cut at {}",
+            cut[0].end
+        );
         // The rest starts where the cut was.
         let rest = ready_batch(&[region(0.0, 12.0)], cut[0].end, secs(20.0), &track);
         assert_eq!(rest[0].start, cut[0].end);
@@ -404,7 +491,11 @@ mod tests {
         assert_eq!(follow.read, bytes.len() as u64);
         assert!(follow.carry.is_empty());
         // 16 kHz, less the last few samples the filter still waits on.
-        assert!((15_960..=16_000).contains(&follow.samples.len()), "{}", follow.samples.len());
+        assert!(
+            (15_960..=16_000).contains(&follow.samples.len()),
+            "{}",
+            follow.samples.len()
+        );
         let _ = std::fs::remove_dir_all(dir);
     }
 }

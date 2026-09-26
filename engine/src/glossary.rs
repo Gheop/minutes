@@ -38,7 +38,10 @@ fn replace_words(text: &str, wrong: &str, right: &str) -> String {
     while i < chars.len() {
         let end = i + pattern.len();
         let found = end <= chars.len()
-            && chars[i..end].iter().zip(&pattern).all(|(&a, &b)| same(a, b))
+            && chars[i..end]
+                .iter()
+                .zip(&pattern)
+                .all(|(&a, &b)| same(a, b))
             && !is_word(i.checked_sub(1).and_then(|j| chars.get(j)))
             && !is_word(chars.get(end));
         if found {
@@ -63,9 +66,16 @@ mod tests {
             "Eva Sas et Sassenage"
         );
         assert_eq!(
-            replace_words("mesdames Claire-Marie Boy et", "Claire-Marie Boy", "Claire Marais-Beuil"),
+            replace_words(
+                "mesdames Claire-Marie Boy et",
+                "Claire-Marie Boy",
+                "Claire Marais-Beuil"
+            ),
             "mesdames Claire Marais-Beuil et"
         );
-        assert_eq!(replace_words("le paquet FIT455.", "fit455", "Fit for 55"), "le paquet Fit for 55.");
+        assert_eq!(
+            replace_words("le paquet FIT455.", "fit455", "Fit for 55"),
+            "le paquet Fit for 55."
+        );
     }
 }

@@ -54,7 +54,10 @@ impl Note {
         let text = std::fs::read_to_string(staging.join(NOTE)).ok()?;
         let value: serde_json::Value = serde_json::from_str(&text).ok()?;
         Some(Note {
-            title: value["title"].as_str().filter(|t| !t.is_empty())?.to_owned(),
+            title: value["title"]
+                .as_str()
+                .filter(|t| !t.is_empty())?
+                .to_owned(),
             started_at: value["started_at"].as_i64()?,
             format: Format::from_key(value["format"].as_str().unwrap_or("mono")),
             language: value["language"].as_str().unwrap_or("auto").to_owned(),
@@ -210,7 +213,9 @@ pub fn name_speakers(manifest: &mut Manifest, markdown: &str) -> String {
                     }
                     match meeting::side_of(label) {
                         // The first voice on the mic is you.
-                        Some((side, 1)) => known.get(side).cloned().unwrap_or_else(|| label.clone()),
+                        Some((side, 1)) => {
+                            known.get(side).cloned().unwrap_or_else(|| label.clone())
+                        }
                         Some((side, n)) if side == meeting::DEFAULT_YOU => format!("Room {n}"),
                         _ => label.clone(),
                     }
@@ -234,7 +239,8 @@ mod tests {
     use super::*;
 
     fn scratch(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("minutes-session-{name}-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("minutes-session-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
@@ -279,7 +285,11 @@ mod tests {
         let computer_only = root.join("200");
         std::fs::create_dir_all(&empty).unwrap();
         std::fs::create_dir_all(&computer_only).unwrap();
-        std::fs::write(raw_tracks(&computer_only).1, vec![0u8; 3 * RAW_BYTES_PER_SEC as usize]).unwrap();
+        std::fs::write(
+            raw_tracks(&computer_only).1,
+            vec![0u8; 3 * RAW_BYTES_PER_SEC as usize],
+        )
+        .unwrap();
         assert_eq!(unfinished(&root), vec![computer_only.clone()]);
         assert_eq!(raw_duration(&computer_only), 3);
         assert!(unfinished(&root.join("missing")).is_empty());
@@ -299,7 +309,10 @@ mod tests {
     #[test]
     fn segments_and_speakers_come_out_of_the_markdown() {
         let md = "# Budget\n\n**[00:01] You:** Bonjour.\n\n**[00:04] Remote 2:** Salut.\n\n**[01:02:03] You:** Merci.\n";
-        assert_eq!(parse_segment("**[00:04] Remote 2:** Salut."), Some(("00:04", "Remote 2", "Salut.")));
+        assert_eq!(
+            parse_segment("**[00:04] Remote 2:** Salut."),
+            Some(("00:04", "Remote 2", "Salut."))
+        );
         assert_eq!(parse_segment("## Chapters"), None);
         assert_eq!(speakers_in(md), ["You", "Remote 2"]);
     }
