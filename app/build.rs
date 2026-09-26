@@ -7,7 +7,10 @@ use std::process::Command;
 fn main() {
     let out = PathBuf::from(std::env::var("OUT_DIR").unwrap()).join("locale");
     println!("cargo:rerun-if-changed=po");
-    for lang in std::fs::read_to_string("po/LINGUAS").unwrap_or_default().split_whitespace() {
+    for lang in std::fs::read_to_string("po/LINGUAS")
+        .unwrap_or_default()
+        .split_whitespace()
+    {
         let dir = out.join(lang).join("LC_MESSAGES");
         std::fs::create_dir_all(&dir).unwrap();
         let status = Command::new("msgfmt")

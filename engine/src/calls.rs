@@ -40,7 +40,11 @@ pub fn calls_in(dump: &serde_json::Value) -> Vec<(String, String)> {
         }
         let app = apps.entry(binary.to_owned()).or_default();
         if app.name.is_empty() {
-            app.name = if name.is_empty() { binary.to_owned() } else { name.to_owned() };
+            app.name = if name.is_empty() {
+                binary.to_owned()
+            } else {
+                name.to_owned()
+            };
         }
         match class {
             // Capturing what a sink plays is recording the computer, not a microphone.
@@ -119,7 +123,10 @@ mod tests {
     use super::*;
 
     fn fixture(name: &str) -> serde_json::Value {
-        let path = format!("{}/tests/fixtures/pipewire/{name}.json", env!("CARGO_MANIFEST_DIR"));
+        let path = format!(
+            "{}/tests/fixtures/pipewire/{name}.json",
+            env!("CARGO_MANIFEST_DIR")
+        );
         serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap()
     }
 
@@ -150,7 +157,10 @@ mod tests {
         assert!(tracker.update(9.0, &teams()).is_empty());
         assert_eq!(
             tracker.update(10.0, &teams()),
-            [Change::Started("teams-for-linux".into(), "teams-for-linux".into())]
+            [Change::Started(
+                "teams-for-linux".into(),
+                "teams-for-linux".into()
+            )]
         );
         assert!(tracker.update(13.0, &teams()).is_empty());
     }
@@ -172,11 +182,17 @@ mod tests {
         tracker.update(0.0, &teams());
         tracker.update(10.0, &teams());
         assert!(tracker.update(20.0, &[]).is_empty(), "gone for a moment");
-        assert!(tracker.update(30.0, &teams()).is_empty(), "back: still the same call");
+        assert!(
+            tracker.update(30.0, &teams()).is_empty(),
+            "back: still the same call"
+        );
         assert!(tracker.update(40.0, &[]).is_empty());
         assert_eq!(
             tracker.update(55.0, &[]),
-            [Change::Ended("teams-for-linux".into(), "teams-for-linux".into())]
+            [Change::Ended(
+                "teams-for-linux".into(),
+                "teams-for-linux".into()
+            )]
         );
         assert!(tracker.update(70.0, &[]).is_empty());
     }

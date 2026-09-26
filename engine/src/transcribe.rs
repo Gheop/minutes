@@ -553,7 +553,9 @@ impl Downsampler {
     const CONTEXT: usize = 96;
 
     pub(crate) fn new() -> Self {
-        Self { pending: vec![0.0; Self::CONTEXT] }
+        Self {
+            pending: vec![0.0; Self::CONTEXT],
+        }
     }
 
     /// Takes 48 kHz mono samples; gives back the 16 kHz ones they complete.
@@ -577,7 +579,12 @@ pub(crate) fn raw_to_mono(bytes: &[u8]) -> Vec<f32> {
     bytes
         .chunks_exact(frame)
         .map(|f| {
-            let sum: f32 = f.as_chunks::<2>().0.iter().map(|s| f32::from(i16::from_le_bytes(*s))).sum();
+            let sum: f32 = f
+                .as_chunks::<2>()
+                .0
+                .iter()
+                .map(|s| f32::from(i16::from_le_bytes(*s)))
+                .sum();
             sum / CHANNELS as f32 / 32768.0
         })
         .collect()
@@ -585,7 +592,10 @@ pub(crate) fn raw_to_mono(bytes: &[u8]) -> Vec<f32> {
 
 /// For the preview: each side levelled like `transcribe` does, and its
 /// stretches of speech so far: (mic, its stretches, computer, its stretches).
-pub(crate) fn preview_regions(mic: &[f32], computer: &[f32]) -> (Vec<f32>, Vec<Region>, Vec<f32>, Vec<Region>) {
+pub(crate) fn preview_regions(
+    mic: &[f32],
+    computer: &[f32],
+) -> (Vec<f32>, Vec<Region>, Vec<f32>, Vec<Region>) {
     let (mic, computer) = (mix(mic, &[]), mix(computer, &[]));
     let mic_regions = own_speech_regions(&mic, &computer);
     let computer_regions = speech_regions(&[&computer], computer.len());
@@ -605,8 +615,20 @@ pub(crate) fn preview_pass(
 ) -> Result<Vec<Segment>, String> {
     let quiet = async_channel::unbounded().0;
     let speakers = Speakers::Side(label, Vec::new());
-    side_pass(context, track, regions, &speakers, language, (0.0, 1.0), false, earlier, true, &quiet, abort)
-        .map(|(lines, _)| lines)
+    side_pass(
+        context,
+        track,
+        regions,
+        &speakers,
+        language,
+        (0.0, 1.0),
+        false,
+        earlier,
+        true,
+        &quiet,
+        abort,
+    )
+    .map(|(lines, _)| lines)
 }
 
 /// The whisper model for the preview, without word alignment (it tells no
@@ -615,7 +637,8 @@ pub(crate) fn load_preview_whisper(model: &Path) -> Result<WhisperContext, Strin
     whisper_rs::install_logging_hooks();
     let mut params = WhisperContextParameters::default();
     params.use_gpu(cfg!(any(feature = "vulkan", feature = "cuda")));
-    WhisperContext::new_with_params(model, params).map_err(|e| format!("could not load the model {}: {e}", model.display()))
+    WhisperContext::new_with_params(model, params)
+        .map_err(|e| format!("could not load the model {}: {e}", model.display()))
 }
 
 pub fn transcribe(
@@ -768,7 +791,10 @@ pub(crate) fn is_hallucination(text: &str) -> bool {
 }
 
 fn drop_hallucinations(segments: Vec<Segment>) -> Vec<Segment> {
-    segments.into_iter().filter(|s| !is_hallucination(&s.text)).collect()
+    segments
+        .into_iter()
+        .filter(|s| !is_hallucination(&s.text))
+        .collect()
 }
 
 fn interleave(mut sentences: Vec<Segment>) -> Vec<Segment> {
@@ -991,8 +1017,9 @@ fn side_pass(
 ) -> Result<(Vec<Segment>, Option<String>), String> {
     let glued = Glued::new(track, regions);
     emit(events, Event::Stage("Transcribing".into()));
-    let (words, detected) =
-        run_whisper(context, &glued, speakers, language, earlier, fitted, progress, events, abort)?;
+    let (words, detected) = run_whisper(
+        context, &glued, speakers, language, earlier, fitted, progress, events, abort,
+    )?;
     Ok((
         phrases(&words, &glued, speakers, track, paragraphs),
         detected,
@@ -1026,7 +1053,11 @@ fn run_whisper(
     // for its first window; the `fix` lines of the glossary cover the rest.
     // Text heard just before, when whisper gets a call in pieces, goes after
     // it; whisper keeps the end of a prompt that is too long.
-    let tail = earlier.char_indices().rev().nth(600).map_or(earlier, |(i, _)| &earlier[i..]);
+    let tail = earlier
+        .char_indices()
+        .rev()
+        .nth(600)
+        .map_or(earlier, |(i, _)| &earlier[i..]);
     let prompt = match (crate::models::config_value("prompt"), tail.trim()) {
         (prompt, "") => prompt,
         (Some(prompt), tail) => Some(format!("{prompt} {tail}")),
@@ -1044,7 +1075,12 @@ fn run_whisper(
         // A few window sizes only: the GPU prepares each size once.
         let seconds = glued.samples.len() as f64 / WHISPER_RATE as f64;
         let needed = (seconds * 50.0).ceil() as i32 + 64;
-        params.set_audio_ctx([384, 768, 1152, 1500].into_iter().find(|&c| c >= needed).unwrap_or(1500));
+        params.set_audio_ctx(
+            [384, 768, 1152, 1500]
+                .into_iter()
+                .find(|&c| c >= needed)
+                .unwrap_or(1500),
+        );
         // One second try instead of four when a stretch decodes badly: each
         // costs a whole decode. None at all lets whisper loop on its prompt.
         params.set_temperature_inc(0.5);
@@ -1564,16 +1600,22 @@ mod tests {
     #[test]
     fn whispers_subtitle_credits_are_not_speech() {
         assert!(is_hallucination("Sous-titrage Société Radio-Canada"));
-        assert!(is_hallucination(" Sous-titres réalisés par la communauté d’Amara.org "));
+        assert!(is_hallucination(
+            " Sous-titres réalisés par la communauté d’Amara.org "
+        ));
         assert!(is_hallucination("Thanks for watching!"));
         // Said in a sentence, it was said.
-        assert!(!is_hallucination("Merci d'avoir regardé le devis, on en reparle demain."));
+        assert!(!is_hallucination(
+            "Merci d'avoir regardé le devis, on en reparle demain."
+        ));
         assert!(!is_hallucination("Oui."));
     }
 
     #[test]
     fn downsampling_in_pieces_gives_the_same_samples() {
-        let input: Vec<f32> = (0..48_000).map(|i| ((i as f32) * 0.013).sin() * 0.5).collect();
+        let input: Vec<f32> = (0..48_000)
+            .map(|i| ((i as f32) * 0.013).sin() * 0.5)
+            .collect();
         let whole = downsample(&input, 3);
         let mut pieces = Downsampler::new();
         let mut out = Vec::new();
@@ -1581,7 +1623,12 @@ mod tests {
             out.extend(pieces.push(chunk));
         }
         // All but the last samples, which wait for more input.
-        assert!(whole.len() - out.len() <= Downsampler::CONTEXT / 3 + 1, "{} of {}", out.len(), whole.len());
+        assert!(
+            whole.len() - out.len() <= Downsampler::CONTEXT / 3 + 1,
+            "{} of {}",
+            out.len(),
+            whole.len()
+        );
         for (i, (a, b)) in out.iter().zip(&whole).enumerate() {
             assert!((a - b).abs() < 1e-6, "sample {i}: {a} against {b}");
         }
@@ -1592,11 +1639,23 @@ mod tests {
         let s = |secs: f64| (secs * WHISPER_RATE as f64) as usize;
         let track = vec![0.0; s(20.0)];
         let regions = [
-            Region { start: s(2.0), onset: s(2.0), end: s(4.0) },
-            Region { start: s(10.0), onset: s(10.0), end: s(13.0) },
+            Region {
+                start: s(2.0),
+                onset: s(2.0),
+                end: s(4.0),
+            },
+            Region {
+                start: s(10.0),
+                onset: s(10.0),
+                end: s(13.0),
+            },
         ];
         let glued = Glued::new(&track, &regions);
-        let turn = |start_ms, end_ms, speaker| crate::diarize::Turn { start_ms, end_ms, speaker };
+        let turn = |start_ms, end_ms, speaker| crate::diarize::Turn {
+            start_ms,
+            end_ms,
+            speaker,
+        };
         // The second region starts 2 s + 0.7 s of gap into the glued buffer.
         assert_eq!(
             glued.turns_on_timeline(vec![turn(500, 1500, 0), turn(2700, 5700, 1)]),
