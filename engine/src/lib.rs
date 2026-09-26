@@ -16,6 +16,7 @@ pub mod meeting;
 pub mod models;
 pub mod nemotron;
 pub mod session;
+pub mod teams;
 pub mod transcribe;
 
 /// The name in paths (config, models, cache) and messages. It stays the one

@@ -13,6 +13,7 @@ libc = "0.2.189"
 ort = "2.0.0-rc.13"
 realfft = "3"
 serde_json.workspace = true
+tungstenite = "0.30.0"
 ureq = "3.4.2"
 whisper-rs = "0.16"
 
