@@ -1247,7 +1247,11 @@ fn language_name(code: &str) -> String {
         .find(|(c, _)| *c == code)
         .map(|(_, label)| (*label).to_owned())
         .or_else(|| {
-            whisper_rs::get_lang_id(code)
+            // "unknown" (nothing was said) is no whisper code; asking whisper
+            // about it only prints a warning.
+            (code != "unknown")
+                .then(|| whisper_rs::get_lang_id(code))
+                .flatten()
                 .and_then(whisper_rs::get_lang_str_full)
                 .map(|full| {
                     let mut chars = full.chars();
