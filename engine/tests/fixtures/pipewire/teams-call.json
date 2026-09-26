@@ -1,0 +1,73 @@
+[
+ {
+  "id": 121,
+  "type": "PipeWire:Interface:Node",
+  "info": {
+   "state": "running",
+   "props": {
+    "media.class": "Stream/Input/Audio",
+    "application.name": "parec",
+    "application.process.binary": "pacat",
+    "node.name": "parec",
+    "media.name": "parec"
+   }
+  }
+ },
+ {
+  "id": 45,
+  "type": "PipeWire:Interface:Node",
+  "info": {
+   "state": "running",
+   "props": {
+    "media.class": "Stream/Input/Audio",
+    "application.name": "parec",
+    "application.process.binary": "pacat",
+    "node.name": "parec",
+    "media.name": "parec",
+    "stream.capture.sink": true
+   }
+  }
+ },
+ {
+  "id": 201,
+  "type": "PipeWire:Interface:Node",
+  "info": {
+   "state": "running",
+   "props": {
+    "media.class": "Stream/Input/Audio",
+    "application.name": "teams-for-linux",
+    "application.process.binary": "teams-for-linux",
+    "node.name": "teams-for-linux",
+    "media.name": "RecordStream"
+   }
+  }
+ },
+ {
+  "id": 202,
+  "type": "PipeWire:Interface:Node",
+  "info": {
+   "state": "running",
+   "props": {
+    "media.class": "Stream/Output/Audio",
+    "application.name": "teams-for-linux",
+    "application.process.binary": "teams-for-linux",
+    "node.name": "teams-for-linux",
+    "media.name": "Playback"
+   }
+  }
+ },
+ {
+  "id": 203,
+  "type": "PipeWire:Interface:Node",
+  "info": {
+   "state": "running",
+   "props": {
+    "media.class": "Stream/Output/Audio",
+    "application.name": "Firefox",
+    "application.process.binary": "firefox",
+    "node.name": "Firefox",
+    "media.name": "AudioStream"
+   }
+  }
+ }
+]

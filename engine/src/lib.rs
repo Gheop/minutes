@@ -6,6 +6,7 @@
 pub mod actions;
 pub mod agent;
 pub mod audio;
+pub mod calls;
 pub mod chapters;
 pub mod diarize;
 pub mod export;
