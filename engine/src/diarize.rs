@@ -198,7 +198,7 @@ pub fn turn_start_near(turns: &[Turn], speaker: usize, around_ms: i64) -> Option
 
 /// `diarize <audio> [--speakers N]`: prints the speaker turns as JSON, for
 /// comparing diarization engines on the same file.
-pub fn cli(args: &[String]) -> gtk::glib::ExitCode {
+pub fn cli(args: &[String]) -> glib::ExitCode {
     let mut path = None;
     let mut speakers = None;
     let mut iter = args.iter();
@@ -210,7 +210,7 @@ pub fn cli(args: &[String]) -> gtk::glib::ExitCode {
     }
     let Some(path) = path else {
         eprintln!("Usage: {} diarize <audio> [--speakers N]", crate::APP_NAME);
-        return gtk::glib::ExitCode::from(2);
+        return glib::ExitCode::from(2);
     };
     let result = crate::transcribe::load_track(&path).and_then(|samples| {
         let (events, _rx) = async_channel::unbounded();
@@ -237,11 +237,11 @@ pub fn cli(args: &[String]) -> gtk::glib::ExitCode {
                 })
                 .collect();
             println!("{}", serde_json::Value::Array(json));
-            gtk::glib::ExitCode::SUCCESS
+            glib::ExitCode::SUCCESS
         }
         Err(message) => {
             eprintln!("{}: {message}", crate::APP_NAME);
-            gtk::glib::ExitCode::FAILURE
+            glib::ExitCode::FAILURE
         }
     }
 }

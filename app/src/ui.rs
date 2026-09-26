@@ -3114,7 +3114,7 @@ fn output_dir(started_at: i64, title: &str) -> PathBuf {
         .unwrap_or_default();
     glib::home_dir()
         .join("Documents/Meetings")
-        .join(format!("{stamp} {}", safe_name(title)))
+        .join(format!("{stamp} {}", crate::meeting::safe_name(title)))
 }
 
 fn row_count(list: &gtk::ListBox) -> i32 {
@@ -3484,24 +3484,6 @@ fn load_css() {
     }
 }
 
-pub fn safe_name(text: &str) -> String {
-    let cleaned: String = text
-        .chars()
-        .map(|c| {
-            if matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|') {
-                '-'
-            } else {
-                c
-            }
-        })
-        .collect();
-    let trimmed = cleaned.trim_matches(|c| c == ' ' || c == '.');
-    if trimmed.is_empty() {
-        "Meeting".to_owned()
-    } else {
-        trimmed.to_owned()
-    }
-}
 
 fn format_elapsed(secs: i64) -> String {
     let (h, m, s) = (secs / 3600, secs / 60 % 60, secs % 60);

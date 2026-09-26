@@ -9,7 +9,6 @@
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-use gtk::glib;
 use whisper_rs::DtwModelPreset;
 
 use crate::transcribe::{Abort, Events, download, models_dir};

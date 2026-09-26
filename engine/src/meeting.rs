@@ -202,7 +202,7 @@ pub fn relabel(markdown: &str, from: &str, to: &str) -> String {
 
 /// The manifest's path for `title` inside `dir`.
 pub fn path_for(dir: &Path, title: &str) -> PathBuf {
-    dir.join(format!("{}.{EXTENSION}", crate::ui::safe_name(title)))
+    dir.join(format!("{}.{EXTENSION}", safe_name(title)))
 }
 
 /// Finds the manifest in a meeting folder, whatever its name.
@@ -251,7 +251,7 @@ fn from_folder(dir: &Path) -> Option<Manifest> {
         return None;
     }
     let num = |range: std::ops::Range<usize>| stamp[range].parse::<i32>().ok();
-    let started = gtk::glib::DateTime::from_local(
+    let started = glib::DateTime::from_local(
         num(0..4)?,
         num(4..6)?,
         num(6..8)?,
@@ -279,6 +279,27 @@ fn from_folder(dir: &Path) -> Option<Manifest> {
         chapters: Vec::new(),
         chapters_by: None,
     })
+}
+
+/// `text` as a file or folder name: no path separators or characters other
+/// file systems refuse, and never empty.
+pub fn safe_name(text: &str) -> String {
+    let cleaned: String = text
+        .chars()
+        .map(|c| {
+            if matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|') {
+                '-'
+            } else {
+                c
+            }
+        })
+        .collect();
+    let trimmed = cleaned.trim_matches(|c| c == ' ' || c == '.');
+    if trimmed.is_empty() {
+        "Meeting".to_owned()
+    } else {
+        trimmed.to_owned()
+    }
 }
 
 #[cfg(test)]

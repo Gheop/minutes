@@ -728,8 +728,8 @@ fn home() -> PathBuf {
 
 /// `omarchy-meeting-recorder ask "<prompt>"` with the text on stdin, or
 /// `ask --agent` to show which agent would be used.
-pub fn cli(args: &[String]) -> gtk::glib::ExitCode {
-    use gtk::glib::ExitCode;
+pub fn cli(args: &[String]) -> glib::ExitCode {
+    use glib::ExitCode;
     let agent = match status() {
         Ok(agent) => agent,
         Err(why) => {

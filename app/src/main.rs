@@ -2,29 +2,22 @@
 //! audio), transcribes it with whisper.cpp after the call, and streams live
 //! levels to a bar widget.
 
-mod actions;
-mod agent;
 mod animation;
-mod audio;
 mod bar_widget;
-mod chapters;
-mod diarize;
-mod export;
-mod glossary;
 mod ipc;
-mod meeting;
-mod models;
-mod nemotron;
 mod player;
 mod settings;
 mod theme;
-mod transcribe;
 mod ui;
+
+// The engine's modules keep their `crate::` paths in the app.
+use minutes_engine::{
+    APP_NAME, actions, agent, audio, chapters, diarize, export, meeting, models, transcribe,
+};
 
 use gtk::glib;
 
 pub const APP_ID: &str = "com.jankeesvw.OmarchyMeetingRecorder";
-pub const APP_NAME: &str = "omarchy-meeting-recorder";
 
 fn main() -> glib::ExitCode {
     match std::env::args().nth(1).as_deref() {

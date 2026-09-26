@@ -1,0 +1,26 @@
+[package]
+name = "minutes-engine"
+description = "Two-track meeting capture, local transcription with whisper.cpp and speaker diarization"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+async-channel.workspace = true
+glib.workspace = true
+libc = "0.2.189"
+ort = "2.0.0-rc.13"
+realfft = "3"
+serde_json.workspace = true
+ureq = "3.4.2"
+whisper-rs = "0.16"
+
+[features]
+default = []
+# GPU transcription through whisper.cpp's Vulkan backend. Needs the Vulkan
+# headers (`vulkan-headers` on Arch) and glslc (`shaderc`) to build.
+vulkan = ["whisper-rs/vulkan"]
+# GPU transcription through whisper.cpp's CUDA backend, for NVIDIA cards.
+# Needs the CUDA toolkit (nvcc, cuBLAS) to build and the NVIDIA driver to run.
+cuda = ["whisper-rs/cuda"]

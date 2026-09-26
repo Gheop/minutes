@@ -111,7 +111,7 @@ pub struct Outcome {
 /// Runs `action` on the meeting in `dir`. Blocking; the caller runs it off the
 /// main thread.
 pub fn run(action: &Action, dir: &Path, manifest: &Manifest) -> Result<Outcome, String> {
-    let date = gtk::glib::DateTime::from_unix_local(manifest.started_at)
+    let date = glib::DateTime::from_unix_local(manifest.started_at)
         .and_then(|t| t.format("%Y-%m-%d %H:%M"))
         .map(|s| s.to_string())
         .unwrap_or_default();
@@ -170,8 +170,8 @@ pub fn run(action: &Action, dir: &Path, manifest: &Manifest) -> Result<Outcome, 
 /// `action "<name>" <meeting>`: runs one of your actions on a meeting folder
 /// or `.meeting-recorder` file, exactly as the done page does, and prints how
 /// it went. For trying an action out, by you or by your agent.
-pub fn cli(args: &[String]) -> gtk::glib::ExitCode {
-    use gtk::glib::ExitCode;
+pub fn cli(args: &[String]) -> glib::ExitCode {
+    use glib::ExitCode;
     let actions = load();
     let [name, meeting] = args else {
         eprintln!(
