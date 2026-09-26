@@ -876,6 +876,8 @@ impl MinutesWindow {
             .and_then(|t| t.format("%Y-%m-%d %H:%M"))
             .map(|s| s.to_string())
             .unwrap_or_default();
+        // With the names Teams gave, as the preview showed them.
+        let lines = lines.into_iter().map(|l| Segment { speaker: self.side_name(&l.speaker), ..l }).collect();
         let preview = Transcript { segments: lines, language: note.language.clone(), duration_secs: 0 };
         let title = format!("{} ({})", note.title, gettext("preview"));
         let path = out.join(PREVIEW_FILE);
