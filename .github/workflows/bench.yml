@@ -6,10 +6,13 @@ name: Bench
 # as an artifact; "Bench comment" posts them on the pull request, also for pull
 # requests from forks, which may not write to this repository themselves.
 
+# Documentation alone does not change what the bench measures.
 on:
   pull_request:
+    paths-ignore: ['**.md', 'docs/**', 'LICENSE']
   push:
     branches: [main]
+    paths-ignore: ['**.md', 'docs/**', 'LICENSE']
   workflow_dispatch:
 
 permissions:
