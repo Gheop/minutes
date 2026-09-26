@@ -25,6 +25,11 @@
     <control>pointing</control>
   </supports>
   <releases>
+    <release version="0.6.0" date="2026-09-26">
+      <description>
+        <p>The preview shows what is being said as it is said, greyed, and turns it into a line once the speaker pauses.</p>
+      </description>
+    </release>
     <release version="0.5.0" date="2026-09-26">
       <description>
         <p>The preview runs about four seconds behind the call, the recording stops by itself when the call ends, and names from Teams are found in the call view too.</p>

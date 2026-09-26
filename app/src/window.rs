@@ -14,7 +14,7 @@ use gtk::{gio, glib};
 use minutes_engine::audio::{self, Source};
 use minutes_engine::calls::{self, Change, Tracker};
 use minutes_engine::export::Format;
-use minutes_engine::live::Preview;
+use minutes_engine::live::{Preview, Update};
 use minutes_engine::meeting::{self, Manifest};
 use minutes_engine::session::{self, Note};
 use minutes_engine::teams;
@@ -121,6 +121,9 @@ mod imp {
         /// The preview written while recording, and its lines so far.
         pub preview: RefCell<Option<Preview>>,
         pub live: RefCell<Vec<Segment>>,
+        /// The sentence still being said on each side: (speaker, start in ms,
+        /// text, its row), always at the bottom of the preview.
+        pub drafts: RefCell<Vec<(&'static str, i64, String, gtk::ListBoxRow)>>,
         /// The preview saved at Stop, for Copy and Open.
         pub preview_file: RefCell<Option<PathBuf>>,
         /// Your microphone muted with the Mute button.
@@ -517,6 +520,7 @@ impl MinutesWindow {
             win.publish("idle", 0, 0.0);
             win.imp().preview_actions.set_visible(false);
             win.imp().live.borrow_mut().clear();
+            win.imp().drafts.borrow_mut().clear();
             win.publish_live();
             win.load_meetings();
             match result {
@@ -774,18 +778,22 @@ impl MinutesWindow {
     fn start_preview(&self, staging: &Path, language: &str) {
         let imp = self.imp();
         imp.live.borrow_mut().clear();
+        imp.drafts.borrow_mut().clear();
         imp.live_list.remove_all();
         imp.live_group.set_visible(false);
         *imp.preview_file.borrow_mut() = None;
-        let (tx, rx) = async_channel::unbounded::<Vec<Segment>>();
+        let (tx, rx) = async_channel::unbounded::<Update>();
         *imp.preview.borrow_mut() = Some(Preview::start(staging, language, tx));
         let weak = self.downgrade();
         glib::spawn_future_local(async move {
-            while let Ok(lines) = rx.recv().await {
+            while let Ok(update) = rx.recv().await {
                 let Some(win) = weak.upgrade() else {
                     return;
                 };
-                win.add_live(lines);
+                match update {
+                    Update::Lines(lines) => win.add_live(lines),
+                    Update::Draft { speaker, start_ms, text, .. } => win.set_draft(speaker, start_ms, text),
+                }
             }
         });
     }
@@ -793,14 +801,45 @@ impl MinutesWindow {
     fn add_live(&self, lines: Vec<Segment>) {
         let imp = self.imp();
         imp.live_group.set_visible(true);
+        // The drafts stay below the lines that are done.
+        for (_, _, _, row) in imp.drafts.borrow().iter() {
+            imp.live_list.remove(row);
+        }
         for line in &lines {
             let time = clock((line.start_ms / 1000).max(0) as u64);
             imp.live_list.append(&transcript_row(&time, &self.side_name(&line.speaker), &line.text));
         }
+        for (_, _, _, row) in imp.drafts.borrow().iter() {
+            imp.live_list.append(row);
+        }
         imp.live.borrow_mut().extend(lines);
+        self.live_changed();
+    }
+
+    /// Shows what is being said on one side, greyed, until it is done; empty
+    /// text takes it away.
+    fn set_draft(&self, speaker: &'static str, start_ms: i64, text: String) {
+        let imp = self.imp();
+        let mut drafts = imp.drafts.borrow_mut();
+        if let Some(i) = drafts.iter().position(|d| d.0 == speaker) {
+            imp.live_list.remove(&drafts.remove(i).3);
+        }
+        if !text.is_empty() {
+            imp.live_group.set_visible(true);
+            let time = clock((start_ms / 1000).max(0) as u64);
+            let row = transcript_row(&time, &self.side_name(speaker), &format!("{text} …"));
+            row.add_css_class("dimmed");
+            imp.live_list.append(&row);
+            drafts.push((speaker, start_ms, text, row));
+        }
+        drop(drafts);
+        self.live_changed();
+    }
+
+    fn live_changed(&self) {
         self.publish_live();
         // Follow the newest line once it is laid out.
-        let adjustment = imp.live_scroller.vadjustment();
+        let adjustment = self.imp().live_scroller.vadjustment();
         glib::idle_add_local_once(move || adjustment.set_value(adjustment.upper()));
     }
 
@@ -815,11 +854,14 @@ impl MinutesWindow {
             return;
         };
         let live = self.imp().live.borrow();
-        let lines: Vec<(String, String, String)> = live
+        let mut lines: Vec<(String, String, String)> = live
             .iter()
             .skip(live.len().saturating_sub(40))
             .map(|l| (clock((l.start_ms / 1000).max(0) as u64), self.side_name(&l.speaker), l.text.clone()))
             .collect();
+        for (speaker, start_ms, text, _) in self.imp().drafts.borrow().iter() {
+            lines.push((clock((start_ms / 1000).max(0) as u64), self.side_name(speaker), format!("{text} …")));
+        }
         action.set_state(&lines.to_variant());
     }
 
@@ -1017,6 +1059,12 @@ mod tests {
         assert!(imp.live_group.property::<bool>("visible"));
         assert_eq!(imp.live.borrow().len(), 2);
         assert!(imp.live_list.row_at_index(1).is_some() && imp.live_list.row_at_index(2).is_none());
+        // A draft goes below, stays below new lines, and goes when emptied.
+        win.set_draft("Remote", 6000, "Je voulais dire".into());
+        win.add_live(vec![line(5000, "You", "Oui.")]);
+        assert_eq!(imp.live_list.row_at_index(3), Some(imp.drafts.borrow()[0].3.clone()));
+        win.set_draft("Remote", 6000, String::new());
+        assert!(imp.drafts.borrow().is_empty() && imp.live_list.row_at_index(3).is_none());
 
         let dir = std::env::temp_dir().join(format!("minutes-window-{}/202609261000 Budget", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
