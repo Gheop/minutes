@@ -42,6 +42,17 @@ On clear speech the text is the same, within what whisper changes anyway when it
 
 Much closer, but still not the same: through speakers the live transcript is 3.8 points worse with a voice that is not there. Reverted; the after-call detection stays as it was, and is what a live mode has to match.
 
+**Hybrid** (`MINUTES_LIVE_SIM=hybrid:20`): stretches transcribed during the call; at Stop, speech found again over the whole call as after the call, the stretches that came out exactly the same keep their live text, the others are transcribed again, and the speakers are found over the whole call.
+
+| | After the call | Hybrid |
+|---|---|---|
+| Stop to transcript, ES2004a first 5 min | 43 s | 35 s (20 of 28 stretches kept) |
+| Stop to transcript, ES2004a whole | 234 s | 178 s (47 of 141 stretches kept) |
+| Bench (5 min cases) | as above | same or better, one voice too many on IS1009a |
+| ES2004a whole: words | 2821 | 2443, 60 lines for 162: a fault in the simulation, not found |
+
+The wait shrinks by a fifth to a quarter. Two things bound it whatever the fault: a stretch whose edges moved by a single frame live must be transcribed again, and two thirds of them did; and finding the speakers over the whole call at Stop takes about 70 s for 17 minutes on its own. Transcribing during the call with the same quality as after it, a few seconds behind, is not reached with this engine.
+
 ## What is left
 
 - **Hybrid**: transcribe live for a draft to read during the call; when it ends, find the speech again over the whole call (under a second), transcribe only the stretches that came out differently, and find the speakers over the whole call. Same result as today by construction; the wait after the call shrinks without going away.

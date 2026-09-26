@@ -728,6 +728,91 @@ fn transcribe_live_sim(
     })
 }
 
+/// The hybrid, simulated: during the call, stretches are transcribed as they
+/// end, like `transcribe_live_sim`; at Stop, speech is found again over the
+/// whole call exactly as `transcribe` does, the stretches that came out the
+/// same keep their text, the others are transcribed again, and the speakers
+/// are found over the whole call. The same result as after the call by
+/// construction; what matters is how long Stop takes, printed on stderr.
+/// `MINUTES_LIVE_SIM=hybrid:<seconds>`.
+fn transcribe_hybrid_sim(
+    mic: &[f32],
+    computer: &[f32],
+    language: &str,
+    batch_secs: f64,
+    events: &Events,
+    abort: &Abort,
+) -> Result<Transcript, String> {
+    let duration_secs = (mic.len().max(computer.len()) / WHISPER_RATE) as i64;
+    // During the call.
+    let live_mic_regions = causal_own_speech_regions(mic, computer);
+    let live_computer_regions = {
+        let frames = computer.len().div_ceil(FRAME);
+        regions_from(&causal_active_frames(&causal_levels(computer), frames), computer.len())
+    };
+    let live_mic = causally_levelled(mic, &live_mic_regions);
+    let live_computer = causally_levelled(computer, &live_computer_regions);
+    let context = load_whisper(events, abort)?;
+
+    // At Stop: speech and speakers over the whole call, as after the call.
+    let stop = std::time::Instant::now();
+    let (mic_m, computer_m) = (mix(mic, &[]), mix(computer, &[]));
+    let mic_regions = own_speech_regions(&mic_m, &computer_m);
+    let computer_regions = speech_regions(&[&computer_m], computer_m.len());
+    let local = voices(&mic_m, &mic_regions, events, abort)?;
+    let remote = voices(&computer_m, &computer_regions, events, abort)?;
+    let mut after_stop = stop.elapsed();
+
+    let mut language = language.to_owned();
+    let mut segments = Vec::new();
+    let (mut reused, mut total) = (0, 0);
+    for (live_track, live_regions, track, regions, speakers) in [
+        (&live_mic, &live_mic_regions, &mic_m, &mic_regions, Speakers::Side("You", local)),
+        (&live_computer, &live_computer_regions, &computer_m, &computer_regions, Speakers::Side("Remote", remote)),
+    ] {
+        let same = |r: &Region| live_regions.iter().any(|l| l.start == r.start && l.end == r.end);
+        let (kept, again): (Vec<Region>, Vec<Region>) = regions.iter().copied().partition(|r| same(r));
+        reused += kept.len();
+        total += regions.len();
+        // Transcribed during the call; the words get their speakers again at Stop.
+        let mut earlier = String::new();
+        for batch in batches(&kept, batch_secs) {
+            let (lines, found) = side_pass(
+                &context, live_track, &batch, &speakers, &language, (0.0, 1.0), false, &earlier, events, abort,
+            )?;
+            if language == "auto"
+                && let Some(found) = found
+            {
+                language = found;
+            }
+            for line in &lines {
+                earlier.push(' ');
+                earlier.push_str(&line.text);
+            }
+            segments.extend(lines);
+        }
+        // Transcribed at Stop.
+        if !again.is_empty() {
+            let started = std::time::Instant::now();
+            let (lines, _) = side_pass(
+                &context, track, &again, &speakers, &language, (0.0, 1.0), false, "", events, abort,
+            )?;
+            after_stop += started.elapsed();
+            segments.extend(lines);
+        }
+    }
+    eprintln!(
+        "hybrid: {reused} of {total} stretches kept from the live pass; Stop took {:.1} s",
+        after_stop.as_secs_f64()
+    );
+    emit(events, Event::Progress(1.0));
+    Ok(Transcript {
+        segments: crate::glossary::apply(interleave(segments)),
+        language,
+        duration_secs,
+    })
+}
+
 pub fn transcribe(
     mic: &[f32],
     computer: &[f32],
@@ -735,7 +820,11 @@ pub fn transcribe(
     events: &Events,
     abort: &Abort,
 ) -> Result<Transcript, String> {
-    if let Some(batch_secs) = std::env::var("MINUTES_LIVE_SIM").ok().and_then(|v| v.parse().ok()) {
+    let live = std::env::var("MINUTES_LIVE_SIM").unwrap_or_default();
+    if let Some(batch_secs) = live.strip_prefix("hybrid:").and_then(|v| v.parse().ok()) {
+        return transcribe_hybrid_sim(mic, computer, language, batch_secs, events, abort);
+    }
+    if let Ok(batch_secs) = live.parse() {
         return transcribe_live_sim(mic, computer, language, batch_secs, events, abort);
     }
     let duration_secs = (mic.len().max(computer.len()) / WHISPER_RATE) as i64;
