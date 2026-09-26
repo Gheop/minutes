@@ -23,6 +23,10 @@ struct Inner {
     file: Option<BufWriter<File>>,
     /// While paused the meters keep running but nothing is written.
     paused: bool,
+    /// Set by `stop`: parec is killed and not started again.
+    stopped: bool,
+    /// The parec running now, to kill on `stop`.
+    pid: Option<u32>,
 }
 
 #[derive(Clone)]
@@ -37,16 +41,32 @@ impl Source {
             levels: VecDeque::from(vec![0.0; HISTORY]),
             file: None,
             paused: false,
+            stopped: false,
+            pid: None,
         }));
         let shared = inner.clone();
         thread::spawn(move || {
-            loop {
+            while !shared.lock().unwrap().stopped {
                 capture(device, &shared);
                 // parec exits when the device goes away; try again.
                 thread::sleep(Duration::from_secs(1));
             }
         });
         Source { inner }
+    }
+
+    /// Stops listening for good: the microphone is released, and GNOME no
+    /// longer shows it in use. Recording through this source ends too.
+    pub fn stop(&self) {
+        let mut inner = self.inner.lock().unwrap();
+        inner.stopped = true;
+        if let Some(mut file) = inner.file.take() {
+            let _ = file.flush();
+        }
+        if let Some(pid) = inner.pid.take() {
+            // SAFETY: kill only sends a signal; a pid that has gone is harmless.
+            unsafe { libc::kill(pid as libc::pid_t, libc::SIGTERM) };
+        }
     }
 
     /// Tees the raw stream (s16le, RATE, CHANNELS) into `path` from now on.
@@ -102,6 +122,15 @@ fn capture(device: &str, shared: &Mutex<Inner>) {
     else {
         return;
     };
+    {
+        let mut inner = shared.lock().unwrap();
+        if inner.stopped {
+            let _ = child.kill();
+            let _ = child.wait();
+            return;
+        }
+        inner.pid = Some(child.id());
+    }
     let mut stdout = child.stdout.take().expect("piped stdout");
     let mut buf = vec![0u8; CHUNK_BYTES];
     // So a crash loses at most a second: flush every second, and push it to
