@@ -39,15 +39,36 @@ pub struct Snapshot {
     pub me: Option<String>,
     /// Everyone in the call, you included.
     pub participants: Vec<Participant>,
+    /// The people with a tile on the stage: everyone but you, as far as
+    /// the stage has room.
+    pub tiles: Vec<String>,
 }
 
 impl Snapshot {
-    /// Everyone in the call but you.
-    pub fn others(&self) -> Vec<&Participant> {
-        self.participants
-            .iter()
-            .filter(|p| self.me.as_deref() != Some(p.name.as_str()))
-            .collect()
+    /// Your name: from your profile picture, which the call view may hide;
+    /// else the one person in the call without a tile on the stage, since
+    /// your own video is shown apart.
+    pub fn me(&self) -> Option<&str> {
+        if let Some(me) = self.me.as_deref() {
+            return Some(me);
+        }
+        if self.tiles.is_empty() {
+            return None;
+        }
+        let mut untiled = self.participants.iter().filter(|p| !self.tiles.contains(&p.name));
+        match (untiled.next(), untiled.next()) {
+            (Some(me), None) => Some(me.name.as_str()),
+            _ => None,
+        }
+    }
+
+    /// Everyone in the call but you: the participants less your name when it
+    /// is known, else the people on the stage.
+    pub fn others(&self) -> Vec<String> {
+        match self.me() {
+            Some(me) => self.participants.iter().filter(|p| p.name != me).map(|p| p.name.clone()).collect(),
+            None => self.tiles.clone(),
+        }
     }
 }
 
@@ -108,11 +129,18 @@ pub fn parse(value: &serde_json::Value) -> Snapshot {
             })
         })
         .collect();
+    let tiles = value["tiles"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|t| t[0].as_str().map(str::trim).filter(|n| !n.is_empty()).map(str::to_owned))
+        .collect();
     Snapshot {
         in_call: state.is_some(),
         muted: state == Some("mic-off"),
         me: value["avatar"].as_str().and_then(name_in_avatar),
         participants,
+        tiles,
     }
 }
 
@@ -148,12 +176,30 @@ mod tests {
         let snapshot = parse(&call());
         assert!(snapshot.in_call);
         assert!(snapshot.muted);
-        assert_eq!(snapshot.me.as_deref(), Some("Ludovic BENOIT"));
-        assert_eq!(
-            snapshot.others(),
-            [&Participant { name: "Théo BENOIT".into(), muted: false }]
-        );
+        assert_eq!(snapshot.me(), Some("Ludovic BENOIT"));
+        assert_eq!(snapshot.others(), ["Théo BENOIT"]);
         assert!(snapshot.participants[0].muted);
+    }
+
+    #[test]
+    fn without_your_profile_picture_you_are_the_one_without_a_tile() {
+        // The call view may hide the profile picture.
+        let mut value = call();
+        value["avatar"] = serde_json::Value::Null;
+        let snapshot = parse(&value);
+        assert_eq!(snapshot.me, None);
+        assert_eq!(snapshot.me(), Some("Ludovic BENOIT"));
+        assert_eq!(snapshot.others(), ["Théo BENOIT"]);
+    }
+
+    #[test]
+    fn with_no_way_to_tell_you_apart_the_others_are_those_on_stage() {
+        let mut value = call();
+        value["avatar"] = serde_json::Value::Null;
+        value["tiles"] = serde_json::json!([["Théo BENOIT", null], ["Ludovic BENOIT", null]]);
+        let snapshot = parse(&value);
+        assert_eq!(snapshot.me(), None);
+        assert_eq!(snapshot.others().len(), 2);
     }
 
     /// Reads the Teams that runs here: `MINUTES_TEAMS_PORT=9222 cargo test --release -- --ignored --nocapture teams_here`
@@ -178,7 +224,7 @@ mod tests {
         let snapshot = parse(&serde_json::json!({"me": null, "avatar": "Profile picture of Maya Okafor.", "roster": [], "tiles": []}));
         assert!(!snapshot.in_call);
         assert!(!snapshot.muted);
-        assert_eq!(snapshot.me.as_deref(), Some("Maya Okafor"));
+        assert_eq!(snapshot.me(), Some("Maya Okafor"));
         assert!(snapshot.others().is_empty());
     }
 }
