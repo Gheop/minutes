@@ -143,6 +143,13 @@ MIT, like the project it comes from. See [LICENSE](LICENSE).
 
 ## Changelog
 
+### v0.8.1 — Problems you can find (2026-09-27)
+
+- Warnings go to the journal (`journalctl --user -t minutes`) instead of being lost when Minutes runs in the background
+- A track that cannot be written, a failed preview or a missing `parec` now leave a warning
+- The top bar menu no longer throws an error when the screen locks while the preview updates
+- `minutes write-up <folder>` does what the app does after Stop, and the CI checks it on a recorded call
+
 ### v0.8.0 — Minutes under its own name (2026-09-27)
 
 - The config, the downloaded models and the recordings waiting in the cache move from `omarchy-meeting-recorder` folders to `minutes` ones at the first start; nothing is downloaded again
