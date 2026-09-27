@@ -935,7 +935,7 @@ dependencies = [
 
 [[package]]
 name = "minutes"
-version = "0.7.2"
+version = "0.8.0"
 dependencies = [
  "async-channel",
  "gettext-rs",
@@ -947,7 +947,7 @@ dependencies = [
 
 [[package]]
 name = "minutes-engine"
-version = "0.7.2"
+version = "0.8.0"
 dependencies = [
  "async-channel",
  "glib",

@@ -138,6 +138,12 @@ MIT, like the project it comes from. See [LICENSE](LICENSE).
 
 ## Changelog
 
+### v0.8.0 — Minutes under its own name (2026-09-27)
+
+- The config, the downloaded models and the recordings waiting in the cache move from `omarchy-meeting-recorder` folders to `minutes` ones at the first start; nothing is downloaded again
+- The interface Minutes was forked from is removed, with its AI chapters, its actions and its packaging
+- The bench runs the `minutes` binary, with the same scores
+
 ### v0.7.2 — A preview that keeps up (2026-09-27)
 
 - The live preview no longer slows down as a call goes on: finding speech took a second per look after 16 minutes, it now takes a few milliseconds after an hour
