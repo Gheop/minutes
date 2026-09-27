@@ -8,12 +8,17 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 pub const RATE: u32 = 48_000;
 pub const CHANNELS: u32 = 2;
 /// 20 ms of s16le audio.
 const CHUNK_BYTES: usize = (RATE / 50 * 2 * CHANNELS) as usize;
+/// Bytes of one second of raw audio.
+const BYTES_PER_SEC: u64 = RATE as u64 * 2 * CHANNELS as u64;
+/// How far behind the clock a track may fall before silence fills the gap:
+/// parec delivers in small bursts, which is not a gap.
+const GAP_TOLERANCE: u64 = BYTES_PER_SEC / 2;
 /// Three seconds of 20 ms peaks.
 pub const HISTORY: usize = 150;
 const FLOOR_DB: f64 = -60.0;
@@ -30,6 +35,59 @@ struct Inner {
     muted: bool,
     /// The parec running now, to kill on `stop`.
     pid: Option<u32>,
+    /// While recording, how much time the track should hold.
+    clock: Option<TrackClock>,
+    /// When sound last arrived from the device.
+    last_data: Instant,
+}
+
+/// The time a recording has run, pauses left out, and what the track holds.
+struct TrackClock {
+    since: Instant,
+    paused_since: Option<Instant>,
+    paused: Duration,
+    written: u64,
+}
+
+impl TrackClock {
+    fn new() -> Self {
+        Self {
+            since: Instant::now(),
+            paused_since: None,
+            paused: Duration::ZERO,
+            written: 0,
+        }
+    }
+
+    /// Bytes the track should hold by now.
+    fn expected(&self) -> u64 {
+        let paused = self.paused + self.paused_since.map_or(Duration::ZERO, |p| p.elapsed());
+        let running = self.since.elapsed().saturating_sub(paused);
+        (running.as_secs_f64() * BYTES_PER_SEC as f64) as u64
+    }
+}
+
+/// The silence to write so a track holding `written` bytes catches up with
+/// `expected`: none within `GAP_TOLERANCE`, else the whole gap, in whole frames.
+fn silence_to_add(expected: u64, written: u64) -> u64 {
+    let frame = 2 * u64::from(CHANNELS);
+    if expected <= written + GAP_TOLERANCE {
+        return 0;
+    }
+    (expected - written) / frame * frame
+}
+
+/// Writes `bytes` of silence to `file`.
+fn write_silence(file: &mut BufWriter<File>, bytes: u64) {
+    let zeros = [0u8; 4096];
+    let mut left = bytes;
+    while left > 0 {
+        let n = left.min(zeros.len() as u64) as usize;
+        if file.write_all(&zeros[..n]).is_err() {
+            return;
+        }
+        left -= n as u64;
+    }
 }
 
 #[derive(Clone)]
@@ -47,6 +105,8 @@ impl Source {
             stopped: false,
             muted: false,
             pid: None,
+            clock: None,
+            last_data: Instant::now(),
         }));
         let shared = inner.clone();
         thread::spawn(move || {
@@ -64,9 +124,7 @@ impl Source {
     pub fn stop(&self) {
         let mut inner = self.inner.lock().unwrap();
         inner.stopped = true;
-        if let Some(mut file) = inner.file.take() {
-            let _ = file.flush();
-        }
+        inner.finish_track();
         if let Some(pid) = inner.pid.take() {
             // SAFETY: kill only sends a signal; a pid that has gone is harmless.
             unsafe { libc::kill(pid as libc::pid_t, libc::SIGTERM) };
@@ -79,6 +137,7 @@ impl Source {
         let mut inner = self.inner.lock().unwrap();
         inner.file = Some(file);
         inner.paused = false;
+        inner.clock = Some(TrackClock::new());
         Ok(())
     }
 
@@ -92,13 +151,29 @@ impl Source {
     }
 
     pub fn set_paused(&self, paused: bool) {
-        self.inner.lock().unwrap().paused = paused;
+        let mut inner = self.inner.lock().unwrap();
+        inner.paused = paused;
+        if let Some(clock) = inner.clock.as_mut() {
+            match (paused, clock.paused_since) {
+                (true, None) => clock.paused_since = Some(Instant::now()),
+                (false, Some(since)) => {
+                    clock.paused += since.elapsed();
+                    clock.paused_since = None;
+                }
+                _ => {}
+            }
+        }
     }
 
+    /// Ends the recording; a track that fell behind (a device that stopped
+    /// sending) is filled with silence up to now, so both sides end together.
     pub fn stop_recording(&self) {
-        if let Some(mut file) = self.inner.lock().unwrap().file.take() {
-            let _ = file.flush();
-        }
+        self.inner.lock().unwrap().finish_track();
+    }
+
+    /// How long the device has sent nothing: a headset asleep or taken off.
+    pub fn silent_for(&self) -> Duration {
+        self.inner.lock().unwrap().last_data.elapsed()
     }
 
     pub fn levels(&self) -> Vec<f32> {
@@ -115,6 +190,18 @@ impl Source {
             .take(n)
             .copied()
             .fold(0.0, f32::max)
+    }
+}
+
+impl Inner {
+    fn finish_track(&mut self) {
+        if let (Some(file), Some(clock)) = (self.file.as_mut(), self.clock.as_ref()) {
+            write_silence(file, silence_to_add(clock.expected(), clock.written));
+        }
+        if let Some(mut file) = self.file.take() {
+            let _ = file.flush();
+        }
+        self.clock = None;
     }
 }
 
@@ -163,11 +250,24 @@ fn capture(device: &str, shared: &Mutex<Inner>) {
             .unwrap_or(0) as f32
             / 32768.0;
         let mut inner = shared.lock().unwrap();
+        inner.last_data = Instant::now();
         inner.levels.pop_front();
         inner.levels.push_back(peak);
-        if !inner.paused
-            && let Some(file) = inner.file.as_mut()
-        {
+        let Inner {
+            paused,
+            file,
+            clock,
+            ..
+        } = &mut *inner;
+        if !*paused && let Some(file) = file.as_mut() {
+            // The device may have sent nothing for a while (a headset asleep):
+            // the silence it missed goes in first, so the track keeps time.
+            if let Some(clock) = clock.as_mut() {
+                let before = clock.expected().saturating_sub(buf.len() as u64);
+                let gap = silence_to_add(before, clock.written);
+                write_silence(file, gap);
+                clock.written += gap + buf.len() as u64;
+            }
             let _ = file.write_all(&buf);
             if chunks.is_multiple_of(50) {
                 let _ = file.flush();
@@ -187,4 +287,44 @@ pub fn to_meter(peak: f32) -> f64 {
         return 0.0;
     }
     (1.0 - 20.0 * f64::from(peak).log10() / FLOOR_DB).clamp(0.0, 1.0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_track_that_fell_behind_is_filled_to_the_clock() {
+        // Within the tolerance: parec's small bursts are no gap.
+        assert_eq!(silence_to_add(BYTES_PER_SEC, BYTES_PER_SEC - 1_000), 0);
+        assert_eq!(silence_to_add(BYTES_PER_SEC, BYTES_PER_SEC + 5_000), 0);
+        // Five seconds without sound: all of them, in whole frames.
+        let gap = silence_to_add(10 * BYTES_PER_SEC + 3, 5 * BYTES_PER_SEC);
+        assert_eq!(gap, 5 * BYTES_PER_SEC);
+        assert_eq!(gap % 4, 0);
+    }
+
+    #[test]
+    fn pauses_do_not_count_as_time_to_fill() {
+        let mut clock = TrackClock::new();
+        clock.since -= Duration::from_secs(10);
+        clock.paused = Duration::from_secs(4);
+        let expected = clock.expected() as f64 / BYTES_PER_SEC as f64;
+        assert!((5.9..6.1).contains(&expected), "{expected} s");
+        clock.paused_since = Some(Instant::now() - Duration::from_secs(2));
+        let expected = clock.expected() as f64 / BYTES_PER_SEC as f64;
+        assert!((3.9..4.1).contains(&expected), "{expected} s");
+    }
+
+    #[test]
+    fn silence_is_written_in_full() {
+        let path = std::env::temp_dir().join(format!("minutes-silence-{}", std::process::id()));
+        let mut file = BufWriter::new(File::create(&path).unwrap());
+        write_silence(&mut file, 10_004);
+        file.flush().unwrap();
+        let bytes = std::fs::read(&path).unwrap();
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(bytes.len(), 10_004);
+        assert!(bytes.iter().all(|&b| b == 0));
+    }
 }
