@@ -62,6 +62,12 @@ If Minutes stops while it records (a crash, a logout, a power cut), the raw audi
 
 Each track keeps time on its own: when a device stops sending sound (a headset asleep or taken off), the time it missed is filled with silence, so the two sides stay in step, and the window says that your microphone sends nothing.
 
+## Your data
+
+Recordings and transcripts stay on your computer, in folders only your account can read: `~/Documents/Meetings` and the recordings in progress under `~/.cache` are created with mode `700`, since they hold the voices of people who did not choose where they are kept.
+
+The speech models are downloaded from Hugging Face at a fixed revision, and each file is checked against its SHA-256 before it is used; a file that differs is refused and deleted.
+
 ## Alone at your microphone
 
 Minutes tells apart the voices on each side, so that two people sharing your microphone come out as two. When you are alone at it, that can split your own voice in two as you move or as the room's sound mixes in; say so in the config and your side is one person, you:
@@ -132,6 +138,12 @@ fix = "Okafur => Okafor"
 MIT, like the project it comes from. See [LICENSE](LICENSE).
 
 ## Changelog
+
+### v0.7.1 — Safer data (2026-09-27)
+
+- Models are downloaded at a fixed revision and refused unless their SHA-256 matches
+- Meeting and recording folders are readable by your account alone
+- Names read from Teams can no longer break or forge lines of a transcript
 
 ### v0.7.0 — Nothing lost (2026-09-27)
 
