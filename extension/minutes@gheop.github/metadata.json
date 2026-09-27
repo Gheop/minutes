@@ -5,5 +5,5 @@
   "shell-version": ["48", "49", "50"],
   "url": "https://github.com/Gheop/minutes",
   "gettext-domain": "minutes-extension",
-  "version-name": "0.7.0"
+  "version-name": "0.7.1"
 }
