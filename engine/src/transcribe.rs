@@ -231,16 +231,21 @@ fn soft_clip(x: f32) -> f32 {
 /// level first, so a quiet mic is not drowned by loud computer audio; a track
 /// that is only noise is left as it is rather than boosted.
 fn mix(mic: &[f32], computer: &[f32]) -> Vec<f32> {
+    let gain = |track: &[f32]| gain_for(active_level(track), is_silent(track));
+    mix_with(mic, gain(mic), computer, gain(computer))
+}
+
+/// The gain that brings a track speaking at `level` to the level `mix` aims at.
+fn gain_for(level: f32, silent: bool) -> f32 {
     const TARGET: f32 = 0.1;
-    let gain = |track: &[f32]| {
-        let level = active_level(track);
-        if is_silent(track) || level < 0.003 {
-            1.0
-        } else {
-            (TARGET / level).clamp(0.25, 8.0)
-        }
-    };
-    let (mic_gain, computer_gain) = (gain(mic), gain(computer));
+    if silent || level < 0.003 {
+        1.0
+    } else {
+        (TARGET / level).clamp(0.25, 8.0)
+    }
+}
+
+fn mix_with(mic: &[f32], mic_gain: f32, computer: &[f32], computer_gain: f32) -> Vec<f32> {
     (0..mic.len().max(computer.len()))
         .map(|i| {
             let m = mic.get(i).copied().unwrap_or(0.0) * mic_gain;
@@ -309,21 +314,26 @@ pub(crate) struct Region {
     pub(crate) end: usize,
 }
 
-const FRAME: usize = WHISPER_RATE * 30 / 1000;
+pub(crate) const FRAME: usize = WHISPER_RATE * 30 / 1000;
 
 /// Frames of `track` with sound in them: above four times its own noise floor.
 fn active_frames(track: &[f32], frames: usize) -> Vec<bool> {
     let energies: Vec<f32> = track.chunks(FRAME).map(rms).collect();
-    let mut active = vec![false; frames];
-    if energies.is_empty() {
-        return active;
-    }
     let mut sorted = energies.clone();
     sorted.sort_by(f32::total_cmp);
-    let floor = sorted[sorted.len() / 10];
-    let threshold = (floor * 4.0).max(0.002);
-    for (i, energy) in energies.iter().enumerate().take(frames) {
-        if *energy >= threshold {
+    let floor = sorted.get(sorted.len() / 10).copied().unwrap_or(0.0);
+    frames_above(track, frames, threshold_for(floor))
+}
+
+/// Four times the noise floor, a frame's level in 10 being below it.
+fn threshold_for(floor: f32) -> f32 {
+    (floor * 4.0).max(0.002)
+}
+
+fn frames_above(track: &[f32], frames: usize, threshold: f32) -> Vec<bool> {
+    let mut active = vec![false; frames];
+    for (i, energy) in track.chunks(FRAME).map(rms).enumerate().take(frames) {
+        if energy >= threshold {
             active[i] = true;
         }
     }
@@ -352,16 +362,21 @@ fn speech_regions(tracks: &[&[f32]], len: usize) -> Vec<Region> {
 /// and only in runs of a few frames, so the gaps between their words do not
 /// let the echo through either.
 fn own_speech_regions(mic: &[f32], computer: &[f32]) -> Vec<Region> {
+    let frames = mic.len().div_ceil(FRAME);
+    own_speech_in(mic, computer, active_frames(mic, frames))
+}
+
+/// `own_speech_regions`, from the mic frames above its threshold.
+fn own_speech_in(mic: &[f32], computer: &[f32], mut active: Vec<bool>) -> Vec<Region> {
     const AROUND: usize = 3;
     const RUN: usize = 3;
-    let frames = mic.len().div_ceil(FRAME);
+    let frames = active.len();
     let level = |t: &[f32]| -> Vec<f32> {
         (0..frames)
             .map(|i| rms(&t[(i * FRAME).min(t.len())..((i + 1) * FRAME).min(t.len())]))
             .collect()
     };
     let (own, other) = (level(mic), level(computer));
-    let mut active = active_frames(mic, frames);
     for (i, a) in active.iter_mut().enumerate() {
         let loudest = other[i.saturating_sub(AROUND)..(i + AROUND + 1).min(frames)]
             .iter()
@@ -605,21 +620,99 @@ pub(crate) fn raw_to_mono(bytes: &[u8]) -> Vec<f32> {
 
 /// For the preview: each side levelled like `transcribe` does, and its
 /// stretches of speech so far: (mic, its stretches, computer, its stretches).
+/// What the preview knows of one side's whole recording, kept up to date as
+/// it grows: its loudest sample and the level of each frame. Looking at the
+/// whole recording again twice a second took a second per look after a
+/// quarter of an hour.
+#[derive(Default)]
+pub(crate) struct Levels {
+    peak: f32,
+    frames: Vec<f32>,
+}
+
+impl Levels {
+    /// Takes in the whole frames up to `heard` not counted yet, from
+    /// `samples`, the side's recording from sample `base` on.
+    pub(crate) fn update(&mut self, samples: &[f32], base: usize, heard: usize) {
+        for start in (self.counted()..heard / FRAME * FRAME).step_by(FRAME) {
+            let frame = &samples[start - base..start - base + FRAME];
+            self.peak = frame.iter().fold(self.peak, |m, s| m.max(s.abs()));
+            self.frames.push(rms(frame));
+        }
+    }
+
+    /// Where the frames counted end: the samples before are no longer needed.
+    pub(crate) fn counted(&self) -> usize {
+        self.frames.len() * FRAME
+    }
+
+    /// The level `per_cent` of the frames are below.
+    fn percentile(&self, per_cent: usize) -> f32 {
+        if self.frames.is_empty() {
+            return 0.0;
+        }
+        let mut levels = self.frames.clone();
+        let at = levels.len() * per_cent / 100;
+        *levels.select_nth_unstable_by(at, f32::total_cmp).1
+    }
+
+    /// The gain `mix` would give this side.
+    fn gain(&self) -> f32 {
+        gain_for(self.percentile(95), self.peak < 0.003)
+    }
+}
+
+/// For the preview: both sides of a stretch of the recording starting at
+/// sample `from`, a whole number of frames in, levelled as `mix` does it,
+/// with the stretches of speech in each on the recording's timeline. Gains
+/// and noise floors come from the whole recording's `levels`, so looking at
+/// part of it finds what looking at all of it would.
 pub(crate) fn preview_regions(
     mic: &[f32],
     computer: &[f32],
+    from: usize,
+    levels: &[Levels; 2],
 ) -> (Vec<f32>, Vec<Region>, Vec<f32>, Vec<Region>) {
-    let (mic, computer) = (mix(mic, &[]), mix(computer, &[]));
-    let mic_regions = own_speech_regions(&mic, &computer);
-    let computer_regions = speech_regions(&[&computer], computer.len());
-    (mic, mic_regions, computer, computer_regions)
+    let gains = [levels[0].gain(), levels[1].gain()];
+    let (mic, computer) = (
+        mix_with(mic, gains[0], &[], 1.0),
+        mix_with(computer, gains[1], &[], 1.0),
+    );
+    // The floor of a levelled track is its raw floor times its gain: soft
+    // clipping only bends the loudest frames.
+    let threshold = |side: usize| threshold_for(levels[side].percentile(10) * gains[side]);
+    let frames = |track: &[f32]| track.len().div_ceil(FRAME);
+    let mic_regions = own_speech_in(
+        &mic,
+        &computer,
+        frames_above(&mic, frames(&mic), threshold(0)),
+    );
+    let computer_regions = regions_from(
+        &frames_above(&computer, frames(&computer), threshold(1)),
+        computer.len(),
+    );
+    let moved = |regions: Vec<Region>| {
+        regions
+            .into_iter()
+            .map(|r| Region {
+                start: r.start + from,
+                onset: r.onset + from,
+                end: r.end + from,
+            })
+            .collect()
+    };
+    (mic, moved(mic_regions), computer, moved(computer_regions))
 }
 
 /// For the preview: the lines of some stretches of one side, all given to
 /// `label`, with the text heard before on that side as whisper's context.
+/// `track` starts at sample `from` of the recording; the stretches and the
+/// lines are on the recording's timeline.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn preview_pass(
     context: &WhisperContext,
     track: &[f32],
+    from: usize,
     regions: &[Region],
     label: &'static str,
     language: &str,
@@ -628,10 +721,19 @@ pub(crate) fn preview_pass(
 ) -> Result<Vec<Segment>, String> {
     let quiet = async_channel::unbounded().0;
     let speakers = Speakers::Side(label, Vec::new());
+    let regions: Vec<Region> = regions
+        .iter()
+        .map(|r| Region {
+            start: r.start - from,
+            onset: r.onset - from,
+            end: r.end - from,
+        })
+        .collect();
+    let shift = sample_to_ms(from);
     side_pass(
         context,
         track,
-        regions,
+        &regions,
         &speakers,
         language,
         (0.0, 1.0),
@@ -641,7 +743,16 @@ pub(crate) fn preview_pass(
         &quiet,
         abort,
     )
-    .map(|(lines, _)| lines)
+    .map(|(lines, _)| {
+        lines
+            .into_iter()
+            .map(|l| Segment {
+                start_ms: l.start_ms + shift,
+                end_ms: l.end_ms + shift,
+                ..l
+            })
+            .collect()
+    })
 }
 
 /// The whisper model for the preview, without word alignment (it tells no
@@ -1614,6 +1725,82 @@ fn usage() -> glib::ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A minute of a side: quiet noise, with a burst of sound every few
+    /// seconds, some louder than others; `seed` changes where they fall.
+    fn a_side(seed: u32) -> Vec<f32> {
+        let mut state = seed.wrapping_mul(2_654_435_761) | 1;
+        let mut random = move || {
+            state ^= state << 13;
+            state ^= state >> 17;
+            state ^= state << 5;
+            state as f32 / u32::MAX as f32 - 0.5
+        };
+        let mut track: Vec<f32> = (0..WHISPER_RATE * 60).map(|_| random() * 0.004).collect();
+        let mut at = WHISPER_RATE / 2 + (seed as usize % 7) * WHISPER_RATE / 5;
+        let mut loud = 0.05;
+        while at + WHISPER_RATE * 2 < track.len() {
+            let length = WHISPER_RATE / 2 + (random().abs() * WHISPER_RATE as f32 * 2.0) as usize;
+            for (i, x) in track[at..at + length].iter_mut().enumerate() {
+                *x += loud * (i as f32 * 0.07).sin();
+            }
+            loud = if loud > 0.1 { 0.03 } else { loud * 2.0 };
+            at += length + WHISPER_RATE + (random().abs() * WHISPER_RATE as f32 * 3.0) as usize;
+        }
+        track
+    }
+
+    fn levels_of(track: &[f32]) -> Levels {
+        let mut levels = Levels::default();
+        // In uneven pieces, as the recording grows.
+        for heard in (0..track.len()).step_by(7_777).chain([track.len()]) {
+            levels.update(track, 0, heard);
+        }
+        levels
+    }
+
+    fn ends(regions: &[Region]) -> Vec<(usize, usize)> {
+        regions.iter().map(|r| (r.onset, r.end)).collect()
+    }
+
+    #[test]
+    fn the_preview_finds_what_the_transcript_would() {
+        let (mic, computer) = (a_side(1), a_side(2));
+        let levels = [levels_of(&mic), levels_of(&computer)];
+        let (_, mic_regions, _, computer_regions) = preview_regions(&mic, &computer, 0, &levels);
+        let levelled = (mix(&mic, &[]), mix(&computer, &[]));
+        assert!(mic_regions.len() > 5);
+        assert_eq!(
+            ends(&mic_regions),
+            ends(&own_speech_regions(&levelled.0, &levelled.1))
+        );
+        assert_eq!(
+            ends(&computer_regions),
+            ends(&speech_regions(&[&levelled.1], levelled.1.len()))
+        );
+    }
+
+    #[test]
+    fn looking_at_the_end_of_a_recording_finds_the_same_stretches_there() {
+        let (mic, computer) = (a_side(3), a_side(4));
+        let levels = [levels_of(&mic), levels_of(&computer)];
+        let (_, whole_mic, _, whole_computer) = preview_regions(&mic, &computer, 0, &levels);
+        let from = WHISPER_RATE * 31 / FRAME * FRAME;
+        let (_, end_mic, _, end_computer) =
+            preview_regions(&mic[from..], &computer[from..], from, &levels);
+        // Past the first second of the part looked at, the same stretches.
+        let past = |regions: &[Region]| {
+            let regions: Vec<Region> = regions
+                .iter()
+                .filter(|r| r.onset >= from + WHISPER_RATE)
+                .copied()
+                .collect();
+            ends(&regions)
+        };
+        assert!(!past(&whole_mic).is_empty());
+        assert_eq!(past(&end_mic), past(&whole_mic));
+        assert_eq!(past(&end_computer), past(&whole_computer));
+    }
 
     /// Serves `body` once over HTTP on a local port; returns the URL.
     fn serve_once(body: &'static [u8]) -> String {
