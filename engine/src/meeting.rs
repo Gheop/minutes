@@ -9,7 +9,6 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
 
-use crate::chapters::Chapter;
 use crate::export::Format;
 
 pub const EXTENSION: &str = "meeting-recorder";
@@ -38,10 +37,6 @@ pub struct Manifest {
     pub speaker_count: Option<usize>,
     /// The whisper model the transcript was made with.
     pub model: Option<String>,
-    /// Chapters made by an agent, empty when there are none.
-    pub chapters: Vec<Chapter>,
-    /// Which agent made them, e.g. "claude".
-    pub chapters_by: Option<String>,
 }
 
 impl Manifest {
@@ -59,10 +54,6 @@ impl Manifest {
             "imported": self.imported,
             "speaker_count": self.speaker_count,
             "model": self.model,
-            "chapters": self.chapters.iter()
-                .map(|c| json!({ "start_ms": c.start_ms, "title": c.title }))
-                .collect::<Vec<_>>(),
-            "chapters_by": self.chapters_by,
         })
     }
 
@@ -97,20 +88,6 @@ impl Manifest {
             imported: value["imported"].as_str().map(str::to_owned),
             speaker_count: value["speaker_count"].as_u64().map(|n| n as usize),
             model: value["model"].as_str().map(str::to_owned),
-            chapters: value["chapters"]
-                .as_array()
-                .map(|list| {
-                    list.iter()
-                        .filter_map(|c| {
-                            Some(Chapter {
-                                start_ms: c["start_ms"].as_i64()?,
-                                title: c["title"].as_str()?.to_owned(),
-                            })
-                        })
-                        .collect()
-                })
-                .unwrap_or_default(),
-            chapters_by: value["chapters_by"].as_str().map(str::to_owned),
         })
     }
 }
@@ -276,8 +253,6 @@ fn from_folder(dir: &Path) -> Option<Manifest> {
         imported: None,
         speaker_count: None,
         model: None,
-        chapters: Vec::new(),
-        chapters_by: None,
     })
 }
 

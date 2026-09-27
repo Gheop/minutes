@@ -114,11 +114,10 @@ jobs:
             target
           key: cargo-${{ hashFiles('Cargo.lock', '.cargo/config.toml') }}
 
-      # The bench runs the command line of the app it was forked from.
       - uses: actions/upload-artifact@v7
         with:
           name: bench-binary
-          path: target/release/omarchy-meeting-recorder
+          path: target/release/minutes
           retention-days: 1
 
   bench:
@@ -151,10 +150,10 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: |
-            /cache/data/omarchy-meeting-recorder/models
+            /cache/data/minutes/models
             bench/.cache
           # Change the key when the bench model or the speaker model changes.
-          key: models-small.en-nemotron-353b6f8-ami-ES2004a
+          key: models-minutes-small.en-nemotron-353b6f8-ami-ES2004a
 
       - uses: actions/download-artifact@v8
         with:
@@ -167,7 +166,7 @@ jobs:
           HALF: ${{ matrix.half }}
         run: |
           set -o pipefail
-          chmod +x target/release/omarchy-meeting-recorder
+          chmod +x target/release/minutes
           # small.en keeps a run short on GitHub's four cores; the bench is
           # about who said what, which does not depend on the model.
           # shellcheck disable=SC2086 # CASES holds several arguments
@@ -179,9 +178,9 @@ jobs:
         uses: actions/cache/save@v6
         with:
           path: |
-            /cache/data/omarchy-meeting-recorder/models
+            /cache/data/minutes/models
             bench/.cache
-          key: models-small.en-nemotron-353b6f8-ami-ES2004a
+          key: models-minutes-small.en-nemotron-353b6f8-ami-ES2004a
 
       - uses: actions/upload-artifact@v7
         if: ${{ always() }}

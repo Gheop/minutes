@@ -768,8 +768,6 @@ impl MinutesWindow {
             imported: None,
             speaker_count: None,
             model: None,
-            chapters: Vec::new(),
-            chapters_by: None,
         };
         let _ = meeting::write(&out, &manifest);
 

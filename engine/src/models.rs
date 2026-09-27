@@ -1,7 +1,7 @@
 //! Which whisper model transcribes, where it is on disk, and fetching it.
 //!
 //! The model is picked with `--model` on the command line, or `model = "…"`
-//! in `~/.config/omarchy-meeting-recorder/config.toml`, and is
+//! in `~/.config/minutes/config.toml`, and is
 //! `large-v3-turbo` otherwise. A name from `MODELS` is looked for in the app's
 //! own model folder and in voxtype's (same files, no need to have them twice),
 //! and downloaded when it is in neither. A path to a `.bin` file is used as is.

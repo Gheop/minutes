@@ -935,7 +935,7 @@ dependencies = [
 
 [[package]]
 name = "minutes"
-version = "0.7.2"
+version = "0.8.0"
 dependencies = [
  "async-channel",
  "gettext-rs",
@@ -947,7 +947,7 @@ dependencies = [
 
 [[package]]
 name = "minutes-engine"
-version = "0.7.2"
+version = "0.8.0"
 dependencies = [
  "async-channel",
  "glib",
@@ -1057,18 +1057,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c92d4ddb4bd7b50d730c215ff871754d0da6b2178849f8a2a2ab69712d0c073b"
 dependencies = [
  "objc",
-]
-
-[[package]]
-name = "omarchy-meeting-recorder"
-version = "0.7.2"
-dependencies = [
- "async-channel",
- "gtk4",
- "libadwaita",
- "libc",
- "minutes-engine",
- "serde_json",
 ]
 
 [[package]]

@@ -8,7 +8,7 @@ bench/run.py                          # the six cases in fixtures/, about two mi
 bench/run.py --ami                    # plus the first 5 minutes of a real AMI meeting (downloads about 170 MB once)
 bench/run.py --ami --ami-minutes 0    # the whole 17 minute meeting
 bench/run.py --ami --check            # fail when a case scores below thresholds.json, as CI does
-bench/run.py --bin /usr/bin/omarchy-meeting-recorder --json old.json    # any other build
+bench/run.py --bin ~/.local/bin/minutes --json old.json          # any other build
 bench/run.py --case room music        # only some cases
 ```
 

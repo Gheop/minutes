@@ -25,6 +25,11 @@
     <control>pointing</control>
   </supports>
   <releases>
+    <release version="0.8.0" date="2026-09-27">
+      <description>
+        <p>Settings, models and recordings in progress move to folders named after Minutes, and the interface Minutes was forked from is gone.</p>
+      </description>
+    </release>
     <release version="0.7.2" date="2026-09-27">
       <description>
         <p>The live preview stays as quick and as light an hour into a call as at its start.</p>

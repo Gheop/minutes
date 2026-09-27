@@ -107,7 +107,6 @@ gnome-extensions enable minutes@gheop.github
 
 - `engine/`: recording, transcription, speakers and meeting folders, without GTK, so it runs and is tested without a display. `engine/src/session.rs` is one meeting from Start to transcript.
 - `app/`: the GNOME app (GTK 4, libadwaita, translations in `app/po/`).
-- `legacy/`: the interface Minutes was forked from, kept until the new one does everything it did. `bench/run.py` still runs its binary.
 - `engine/src/calls.rs`: telling a call from the PipeWire graph, tested on graphs in `engine/tests/fixtures/pipewire/`.
 - `extension/`: the GNOME Shell extension; `status.js` is what it shows for each state, apart from the Shell so it can be tested.
 - `bench/`: transcript quality (`run.py`, with thresholds) and timing (`perf.py`); `PERF.md` has the numbers.
@@ -123,7 +122,7 @@ bench/run.py --ami --check              # transcript and speaker quality against
 
 ## Configuration
 
-`~/.config/omarchy-meeting-recorder/config.toml` (the path moves when the app is renamed):
+`~/.config/minutes/config.toml` (moved there from `~/.config/omarchy-meeting-recorder/` at the first start of 0.8.0):
 
 ```toml
 model = "large-v3-turbo"
@@ -138,6 +137,12 @@ fix = "Okafur => Okafor"
 MIT, like the project it comes from. See [LICENSE](LICENSE).
 
 ## Changelog
+
+### v0.8.0 — Minutes under its own name (2026-09-27)
+
+- The config, the downloaded models and the recordings waiting in the cache move from `omarchy-meeting-recorder` folders to `minutes` ones at the first start; nothing is downloaded again
+- The interface Minutes was forked from is removed, with its AI chapters, its actions and its packaging
+- The bench runs the `minutes` binary, with the same scores
 
 ### v0.7.2 — A preview that keeps up (2026-09-27)
 

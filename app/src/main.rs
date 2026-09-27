@@ -35,6 +35,7 @@ fn locale_dir() -> PathBuf {
 
 fn main() -> glib::ExitCode {
     let args: Vec<String> = std::env::args().collect();
+    minutes_engine::move_old_paths();
     // The engine's command-line tools, for scripts and the bench.
     match args.get(1).map(String::as_str) {
         Some("transcribe") => return transcribe::cli(&args[2..]),
