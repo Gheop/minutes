@@ -34,3 +34,26 @@ Total 8 min 15 s (with browsers open; the same run on a quiet machine takes 4 mi
 ## Whole meeting
 
 `bench/perf.py bench/bin/base bench/bin/h3 --runs 3 --minutes 0` (ES2004a, 17 min 29 s): 274.8 s ± 0.5 % before, 233.9 s ± 0.1 % after (−15 %). Finding speakers 109.6 → 70.8 s, transcribing 161.1 → 162.4 s, largest RSS 1247 → 1249 MB. Finding speakers costs the same per minute of audio on 5 and on 17 minutes (6.1 and 6.3 s): it grows in a straight line, the laptop does not slow down with heat.
+
+## Second round: the instance at rest, the time after Stop, the preview (2026-09-27)
+
+Targets, in the user's words: what is too slow or too heavy today, all three of
+- the instance started at login, waiting all day: resident memory of `minutes --background` after 20 s, 10 starts on a private session bus (`bench/idle.py`);
+- the time after Stop: as in the first round (`bench/perf.py`, first 5 minutes of ES2004a, 10 alternating runs);
+- the preview during a call: median and 90th percentile delay of its lines, replaying the call fixture in real time, 10 alternating runs (`bench/preview.py`).
+
+Browsers and Teams closed for every series.
+
+### Profile of the instance at rest
+
+237.5 MB resident (±0.3), of which 127.7 MB anonymous. One mapping holds 101.5 MB of it: the `.bss` of `libcublasLt.so.13`, right after its data segment, written when the library loads. With the CUDA libraries' code, CUDA is about 180 MB of the 237, in a process that transcribes nothing until a call is recorded. During the first audit this read as 8 MB: that count only looked at the libraries' file pages.
+
+| # | Hypothesis | Files | Result | Δ main metric | Δ RSS | Verdict |
+|---|---|---|---|---|---|---|
+| 5 | The Vulkan backend links only `libvulkan`, which loads the driver when a device is opened; built with `--features vulkan`, the idle instance should lose the CUDA libraries' 180 MB. The risk is whisper running slower | build | At rest 237.5 → 57.7 MB (±0.1). By default ggml puts the Intel Arc first and whisper ran there: 192 s for 5 minutes, the RTX idle. Forced onto the RTX (`GGML_VK_VISIBLE_DEVICES=1`), a first run took 52.8 s, which made Vulkan look slower; it was the driver compiling the shaders once. Over 10 alternating runs: 42.3 s ± 2.4 % against 44.4 s ± 2.6 % for CUDA, faster in every pair; whisper 26.0 against 27.5 s, speakers 15.9 against 16.7 s, peak RSS 614 against 904 MB | at rest −76 %, after Stop −4.7 % | peak −32 % | Kept, with #6 |
+| 6 | whisper.cpp counts integrated and dedicated GPUs alike, in ggml's order; picking the index of the first dedicated one should put whisper on the RTX without an environment variable | `transcribe.rs`, `engine/Cargo.toml` (`raw-api`) | The RTX is used (100 %), `GGML_VK_VISIBLE_DEVICES` still picks another | — | — | Kept |
+| 7 | With Vulkan, moving whisper into a worker process started only to transcribe should take the idle instance further down | `engine/`, `worker/` (branch `perf-worker`) | At rest 57.9 → 48.9 MB (±0.3); the app binary 74 → 4.5 MB, pages that were never loaded anyway. It adds a process, a JSON protocol and a start per transcript for 9 MB | at rest −16 % | — | Not merged: not worth the extra process |
+
+Quality, Vulkan against CUDA, same model (`large-v3-turbo`): on the bench's 8 cases, 5 score a little higher, 3 the same, and ES2004a's call (first 5 minutes) loses on the side (96.7 → 93.0 %) with a fourth speaker. On whole meetings the differences go both ways: ES2004a import 96.7 → 94.1 % right person, ES2004a call 94.9 → 97.1 % right side and 92.4 → 93.5 % right person, IS1009a import 89.4 → 89.1 %, IS1009a call 34.7 → 33.0 % side and 73.1 → 75.0 % person. The speaker error is identical everywhere (the speakers are found on the CPU either way). Both builds fall into whisper's repetition loops, at different places: tiny numeric differences take the decoding down different paths. No bias either way: the same quality.
+
+The preview, 10 alternating runs each: 43 lines every time for both; median delay 2.7 s (CUDA) and 2.5 s (Vulkan), 90th percentile 4.8 and 4.6 s, worst line 6.5 and 7.5 s, drafts 1.0 s at the 90th percentile for both. The differences are within the half-second tick: the same.
