@@ -755,12 +755,34 @@ pub(crate) fn preview_pass(
     })
 }
 
+/// The GPU whisper runs on: the first dedicated one. whisper.cpp counts the
+/// integrated ones too, in the order ggml lists them, and a laptop's own
+/// graphics can come first: through Vulkan, an Intel Arc before an NVIDIA
+/// card, where whisper took four times longer.
+fn gpu_device() -> i32 {
+    use whisper_rs::whisper_rs_sys as ggml;
+    let mut index = 0;
+    // SAFETY: ggml builds its list of devices once, on first use; this only
+    // reads it.
+    unsafe {
+        for i in 0..ggml::ggml_backend_dev_count() {
+            match ggml::ggml_backend_dev_type(ggml::ggml_backend_dev_get(i)) {
+                ggml::ggml_backend_dev_type_GGML_BACKEND_DEVICE_TYPE_GPU => return index,
+                ggml::ggml_backend_dev_type_GGML_BACKEND_DEVICE_TYPE_IGPU => index += 1,
+                _ => {}
+            }
+        }
+    }
+    0
+}
+
 /// The whisper model for the preview, without word alignment (it tells no
 /// voices apart), on the GPU when there is one.
 pub(crate) fn load_preview_whisper(model: &Path) -> Result<WhisperContext, String> {
     whisper_rs::install_logging_hooks();
     let mut params = WhisperContextParameters::default();
     params.use_gpu(cfg!(any(feature = "vulkan", feature = "cuda")));
+    params.gpu_device(gpu_device());
     WhisperContext::new_with_params(model, params)
         .map_err(|e| format!("could not load the model {}: {e}", model.display()))
 }
@@ -1114,6 +1136,7 @@ fn load_whisper(events: &Events, abort: &Abort) -> Result<WhisperContext, String
     whisper_rs::install_logging_hooks();
     let mut context_params = WhisperContextParameters::default();
     context_params.use_gpu(cfg!(any(feature = "vulkan", feature = "cuda")));
+    context_params.gpu_device(gpu_device());
     // Word times aligned on the attention heads (DTW): the plain token times
     // drift by up to a second, too much to tell where one speaker takes over.
     // A model file of unknown kind gets plain token times.
