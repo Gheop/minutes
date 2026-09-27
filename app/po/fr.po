@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: minutes\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-26 17:31+0200\n"
+"POT-Creation-Date: 2026-09-27 07:59+0200\n"
 "PO-Revision-Date: 2026-09-26 08:05+0200\n"
 "Last-Translator: Automatically generated\n"
 "Language-Team: none\n"
@@ -27,11 +27,11 @@ msgid "_About Minutes"
 msgstr "À _propos de Minutes"
 
 #: app/src/window.ui:18 app/src/window.ui:35 app/src/main.rs:51
-#: app/src/main.rs:171
+#: app/src/main.rs:179
 msgid "Minutes"
 msgstr "Minutes"
 
-#: app/src/window.ui:43 app/src/window.ui:99 app/src/window.rs:389
+#: app/src/window.ui:43 app/src/window.ui:99 app/src/window.rs:433
 msgid "New Recording"
 msgstr "Nouvel enregistrement"
 
@@ -51,11 +51,15 @@ msgstr "Les réunions enregistrées apparaissent ici"
 msgid "Copy Transcript"
 msgstr "Copier la transcription"
 
-#: app/src/window.ui:123
+#: app/src/window.ui:116
+msgid "_Recover…"
+msgstr "_Récupérer…"
+
+#: app/src/window.ui:129
 msgid "Ready to Record"
 msgstr "Prêt à enregistrer"
 
-#: app/src/window.ui:124
+#: app/src/window.ui:130
 msgid ""
 "Minutes records your microphone and what your computer plays, then writes "
 "the transcript on this computer"
@@ -63,61 +67,60 @@ msgstr ""
 "Minutes enregistre votre micro et ce que joue votre ordinateur, puis rédige "
 "la transcription sur cet ordinateur"
 
-#: app/src/window.ui:134
+#: app/src/window.ui:140
 msgid "_Record"
 msgstr "_Enregistrer"
 
-#: app/src/window.ui:148
+#: app/src/window.ui:154
 msgid "Meeting Name"
 msgstr "Nom de la réunion"
 
-#: app/src/window.ui:153
+#: app/src/window.ui:159
 msgid "Language"
 msgstr "Langue"
 
-#: app/src/window.ui:160
+#: app/src/window.ui:166
 msgid "Sound"
 msgstr "Son"
 
-#: app/src/window.ui:163 app/src/window.ui:212
+#: app/src/window.ui:169 app/src/window.ui:218
 msgid "Your Microphone"
 msgstr "Votre micro"
 
-#: app/src/window.ui:174 app/src/window.ui:223
+#: app/src/window.ui:180 app/src/window.ui:229
 msgid "Computer Audio"
 msgstr "Son de l’ordinateur"
 
-#: app/src/window.ui:200 app/src/window.rs:450 app/src/window.rs:485
-#: app/src/window.rs:696
+#: app/src/window.ui:206 app/src/window.rs:498 app/src/window.rs:555
 msgid "Recording"
 msgstr "Enregistrement en cours"
 
-#: app/src/window.ui:240 app/src/window.rs:449 app/src/window.rs:483
+#: app/src/window.ui:246 app/src/window.rs:496 app/src/window.rs:533
 msgid "_Pause"
 msgstr "_Pause"
 
-#: app/src/window.ui:250 app/src/window.rs:691
+#: app/src/window.ui:256 app/src/window.rs:898
 msgid "_Mute My Microphone"
 msgstr "_Couper mon micro"
 
-#: app/src/window.ui:260
+#: app/src/window.ui:266
 msgid "_Stop"
 msgstr "_Arrêter"
 
-#: app/src/window.ui:273
+#: app/src/window.ui:279
 msgid "Preview"
 msgstr "Aperçu"
 
-#: app/src/window.ui:274
+#: app/src/window.ui:280
 msgid "Written as the call goes on; the transcript made at the end is better"
 msgstr ""
 "Rédigé pendant l’appel ; la transcription faite à la fin sera meilleure"
 
-#: app/src/window.ui:306
+#: app/src/window.ui:312
 msgid "Writing the Transcript"
 msgstr "Rédaction de la transcription"
 
-#: app/src/window.ui:326
+#: app/src/window.ui:332
 msgid ""
 "The preview written during the call is ready now; the better transcript "
 "follows."
@@ -125,178 +128,225 @@ msgstr ""
 "L’aperçu rédigé pendant l’appel est disponible dès maintenant ; la "
 "transcription définitive arrive."
 
-#: app/src/window.ui:340
+#: app/src/window.ui:346
 msgid "Copy the Preview"
 msgstr "Copier l’aperçu"
 
-#: app/src/window.ui:349
+#: app/src/window.ui:355
 msgid "Open the Preview"
 msgstr "Ouvrir l’aperçu"
 
-#: app/src/window.ui:362
+#: app/src/window.ui:368
 msgid "_Cancel"
 msgstr "_Annuler"
 
-#: app/src/window.rs:160
+#: app/src/window.rs:170
 msgid "Stop the recording before closing"
 msgstr "Arrêtez l’enregistrement avant de fermer"
 
-#: app/src/window.rs:279
+#: app/src/window.rs:299
 msgid "Recording stopped"
 msgstr "Enregistrement arrêté"
 
-#: app/src/window.rs:280
+#: app/src/window.rs:301
 msgid "The call in %s ended; the transcript is being written."
 msgstr "L’appel dans %s est terminé ; la transcription est en cours."
 
-#: app/src/window.rs:292
+#: app/src/window.rs:314
 msgid "Call in %s"
 msgstr "Appel dans %s"
 
-#: app/src/window.rs:294
+#: app/src/window.rs:316
 msgid "Record it with Minutes? Tell the others first."
 msgstr "L’enregistrer avec Minutes ? Prévenez d’abord les autres participants."
 
-#: app/src/window.rs:296
+#: app/src/window.rs:318
 msgid "Record"
 msgstr "Enregistrer"
 
-#: app/src/window.rs:411
+#: app/src/window.rs:455
 msgid "Meeting %H:%M"
 msgstr "Réunion %H:%M"
 
-#: app/src/window.rs:412
+#: app/src/window.rs:456
 msgid "Meeting"
 msgstr "Réunion"
 
-#: app/src/window.rs:431
+#: app/src/window.rs:475
 msgid "Could not start recording"
 msgstr "Impossible de démarrer l’enregistrement"
 
-#: app/src/window.rs:483
+#: app/src/window.rs:531
 msgid "_Resume"
 msgstr "_Reprendre"
 
-#: app/src/window.rs:485
+#: app/src/window.rs:547
 msgid "Paused"
 msgstr "En pause"
 
-#: app/src/window.rs:508
-msgid "Saving the audio"
-msgstr "Enregistrement de l’audio"
-
-#: app/src/window.rs:528
-msgid "Transcript cancelled; the audio is kept"
-msgstr "Transcription annulée ; l’audio est conservé"
-
-#: app/src/window.rs:532
-msgid "Could not write the transcript"
-msgstr "Impossible de rédiger la transcription"
-
-#: app/src/window.rs:645
-msgid "This meeting could not be read"
-msgstr "Impossible de lire cette réunion"
-
-#: app/src/window.rs:656
-msgid "Nobody was heard in this meeting."
-msgstr "Personne n’a été entendu pendant cette réunion."
-
-#: app/src/window.rs:669
-msgid "You"
-msgstr "Vous"
-
-#: app/src/window.rs:670
-msgid "Others"
-msgstr "Les autres"
-
-#: app/src/window.rs:689
-msgid "_Unmute My Microphone"
-msgstr "_Rétablir mon micro"
-
-#: app/src/window.rs:698
+#: app/src/window.rs:549
 msgid "Recording, your microphone muted"
 msgstr "Enregistrement en cours, votre micro est coupé"
 
-#: app/src/window.rs:700
+#: app/src/window.rs:551
 msgid "Recording, your microphone muted as in Teams"
 msgstr "Enregistrement en cours, votre micro est coupé comme dans Teams"
 
-#: app/src/window.rs:838
+#: app/src/window.rs:553
+msgid ""
+"Recording, but your microphone sends nothing: a headset asleep or taken off?"
+msgstr ""
+"Enregistrement en cours, mais votre micro ne transmet rien : casque en "
+"veille ou retiré ?"
+
+#: app/src/window.rs:599
+msgid "An interrupted recording was found (%s min)"
+msgstr "Un enregistrement interrompu a été retrouvé (%s min)"
+
+#: app/src/window.rs:604
+msgid "An interrupted recording was found"
+msgstr "Un enregistrement interrompu a été retrouvé"
+
+#: app/src/window.rs:605
+msgid "Open Minutes to write its transcript or delete it."
+msgstr "Ouvrez Minutes pour rédiger sa transcription ou le supprimer."
+
+#: app/src/window.rs:616 app/src/window.rs:659
+msgid "Recovered Recording"
+msgstr "Enregistrement récupéré"
+
+#: app/src/window.rs:619
+msgid "Recover the interrupted recording?"
+msgstr "Récupérer l’enregistrement interrompu ?"
+
+#: app/src/window.rs:623
+msgid "_Later"
+msgstr "_Plus tard"
+
+#: app/src/window.rs:624
+msgid "_Delete"
+msgstr "_Supprimer"
+
+#: app/src/window.rs:625
+msgid "_Recover"
+msgstr "_Récupérer"
+
+#: app/src/window.rs:640
+msgid "Interrupted recording deleted"
+msgstr "Enregistrement interrompu supprimé"
+
+#: app/src/window.rs:653
+msgid "Finish the current recording first"
+msgstr "Terminez d’abord l’enregistrement en cours"
+
+#: app/src/window.rs:687
+msgid "Saving the audio"
+msgstr "Enregistrement de l’audio"
+
+#: app/src/window.rs:709
+msgid "Transcript cancelled; the audio is kept"
+msgstr "Transcription annulée ; l’audio est conservé"
+
+#: app/src/window.rs:715
+msgid "Could not write the transcript"
+msgstr "Impossible de rédiger la transcription"
+
+#: app/src/window.rs:846
+msgid "This meeting could not be read"
+msgstr "Impossible de lire cette réunion"
+
+#: app/src/window.rs:860
+msgid "Nobody was heard in this meeting."
+msgstr "Personne n’a été entendu pendant cette réunion."
+
+#: app/src/window.rs:874
+msgid "You"
+msgstr "Vous"
+
+#: app/src/window.rs:877
+msgid "Others"
+msgstr "Les autres"
+
+#: app/src/window.rs:896
+msgid "_Unmute My Microphone"
+msgstr "_Rétablir mon micro"
+
+#: app/src/window.rs:1110
 msgid "preview"
 msgstr "aperçu"
 
-#: app/src/window.rs:852
+#: app/src/window.rs:1124
 msgid "Preview copied"
 msgstr "Aperçu copié"
 
-#: app/src/window.rs:876
+#: app/src/window.rs:1148
 msgid "Transcript ready"
 msgstr "Transcription prête"
 
-#: app/src/window.rs:887
+#: app/src/window.rs:1159
 msgid "Transcript copied"
 msgstr "Transcription copiée"
 
-#: app/src/window.rs:950
+#: app/src/window.rs:1228
 msgid "Loading the audio"
 msgstr "Chargement de l’audio"
 
-#: app/src/window.rs:951
+#: app/src/window.rs:1229
 msgid "Telling the voices apart"
 msgstr "Distinction des voix"
 
-#: app/src/window.rs:952
+#: app/src/window.rs:1230
 msgid "Loading the speech model"
 msgstr "Chargement du modèle vocal"
 
-#: app/src/window.rs:953
+#: app/src/window.rs:1231
 msgid "Transcribing"
 msgstr "Transcription"
 
-#: app/src/window.rs:954
+#: app/src/window.rs:1232
 msgid "Downloading the speech model"
 msgstr "Téléchargement du modèle vocal"
 
-#: app/src/window.rs:955
+#: app/src/window.rs:1233
 msgid "Downloading the speaker model"
 msgstr "Téléchargement du modèle des voix"
 
-#: app/src/window.rs:962
+#: app/src/window.rs:1240
 msgid "Detect Automatically"
 msgstr "Détection automatique"
 
-#: app/src/window.rs:963
+#: app/src/window.rs:1241
 msgid "English"
 msgstr "Anglais"
 
-#: app/src/window.rs:964
+#: app/src/window.rs:1242
 msgid "French"
 msgstr "Français"
 
-#: app/src/window.rs:965
+#: app/src/window.rs:1243
 msgid "Dutch"
 msgstr "Néerlandais"
 
-#: app/src/window.rs:966
+#: app/src/window.rs:1244
 msgid "German"
 msgstr "Allemand"
 
-#: app/src/window.rs:967
+#: app/src/window.rs:1245
 msgid "Spanish"
 msgstr "Espagnol"
 
-#: app/src/window.rs:968
+#: app/src/window.rs:1246
 msgid "Italian"
 msgstr "Italien"
 
-#: app/src/window.rs:969
+#: app/src/window.rs:1247
 msgid "Portuguese"
 msgstr "Portugais"
 
-#: app/src/main.rs:180
+#: app/src/main.rs:188
 msgid "Based on"
 msgstr "Basé sur"
 
-#: app/src/main.rs:184
+#: app/src/main.rs:192
 msgid "Speech and speakers"
 msgstr "Parole et locuteurs"

@@ -111,6 +111,12 @@
                         </child>
                       </object>
                     </child>
+                    <child type="top">
+                      <object class="AdwBanner" id="recovery_banner">
+                        <property name="button-label" translatable="yes">_Recover…</property>
+                        <property name="action-name">win.recover</property>
+                      </object>
+                    </child>
                     <property name="content">
                       <object class="GtkStack" id="pages">
                         <property name="transition-type">crossfade</property>
