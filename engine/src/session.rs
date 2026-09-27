@@ -156,9 +156,6 @@ pub fn transcribe_into(
     let markdown = name_speakers(manifest, &markdown);
     manifest.language = language.to_owned();
     manifest.model = Some(crate::models::configured());
-    // Chapters of a previous transcript would point at lines that are gone.
-    manifest.chapters.clear();
-    manifest.chapters_by = None;
     meeting::write(out, manifest).map_err(|e| format!("could not write the meeting: {e}"))?;
     std::fs::write(out.join("transcript.md"), markdown)
         .map_err(|e| format!("could not write the transcript: {e}"))
@@ -272,8 +269,6 @@ mod tests {
             imported: None,
             speaker_count: None,
             model: None,
-            chapters: Vec::new(),
-            chapters_by: None,
         }
     }
 

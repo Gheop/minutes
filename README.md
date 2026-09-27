@@ -107,7 +107,6 @@ gnome-extensions enable minutes@gheop.github
 
 - `engine/`: recording, transcription, speakers and meeting folders, without GTK, so it runs and is tested without a display. `engine/src/session.rs` is one meeting from Start to transcript.
 - `app/`: the GNOME app (GTK 4, libadwaita, translations in `app/po/`).
-- `legacy/`: the interface Minutes was forked from, kept until the new one does everything it did. `bench/run.py` still runs its binary.
 - `engine/src/calls.rs`: telling a call from the PipeWire graph, tested on graphs in `engine/tests/fixtures/pipewire/`.
 - `extension/`: the GNOME Shell extension; `status.js` is what it shows for each state, apart from the Shell so it can be tested.
 - `bench/`: transcript quality (`run.py`, with thresholds) and timing (`perf.py`); `PERF.md` has the numbers.

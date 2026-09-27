@@ -3,11 +3,8 @@
 //! the voices on each side apart, and writes the meeting folder. No GTK: it
 //! runs and is tested without a display.
 
-pub mod actions;
-pub mod agent;
 pub mod audio;
 pub mod calls;
-pub mod chapters;
 pub mod diarize;
 pub mod export;
 pub mod glossary;

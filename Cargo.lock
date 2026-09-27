@@ -1060,18 +1060,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "omarchy-meeting-recorder"
-version = "0.7.2"
-dependencies = [
- "async-channel",
- "gtk4",
- "libadwaita",
- "libc",
- "minutes-engine",
- "serde_json",
-]
-
-[[package]]
 name = "once_cell"
 version = "1.21.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
