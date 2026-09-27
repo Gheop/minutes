@@ -173,9 +173,21 @@ pub fn parse(value: &serde_json::Value) -> Snapshot {
 fn clean_name(name: &str) -> String {
     let spaced: String = name
         .chars()
-        .map(|c| if c.is_control() || "*:[]".contains(c) { ' ' } else { c })
+        .map(|c| {
+            if c.is_control() || "*:[]".contains(c) {
+                ' '
+            } else {
+                c
+            }
+        })
         .collect();
-    spaced.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(80).collect()
+    spaced
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .chars()
+        .take(80)
+        .collect()
 }
 
 /// "Image de profil de Ludovic BENOIT." or "Profile picture of Maya Okafor."
