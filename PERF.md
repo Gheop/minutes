@@ -47,7 +47,7 @@ Both stages grow in a straight line with the length of the call: finding speaker
 ```bash
 cargo build --release --features cuda                  # CUDAARCHS=86 for an RTX 30 series
 bench/run.py --ami                                     # downloads AMI ES2004a into bench/.cache once
-cp target/release/omarchy-meeting-recorder bench/bin/after
+cp target/release/minutes bench/bin/after
 bench/perf.py bench/bin/before bench/bin/after --runs 10            # first 5 minutes
 bench/perf.py bench/bin/before bench/bin/after --runs 3 --minutes 0 # the whole meeting
 bench/run.py --ami --check --bin bench/bin/after                    # quality

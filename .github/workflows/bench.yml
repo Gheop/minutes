@@ -114,11 +114,10 @@ jobs:
             target
           key: cargo-${{ hashFiles('Cargo.lock', '.cargo/config.toml') }}
 
-      # The bench runs the command line of the app it was forked from.
       - uses: actions/upload-artifact@v7
         with:
           name: bench-binary
-          path: target/release/omarchy-meeting-recorder
+          path: target/release/minutes
           retention-days: 1
 
   bench:
@@ -167,7 +166,7 @@ jobs:
           HALF: ${{ matrix.half }}
         run: |
           set -o pipefail
-          chmod +x target/release/omarchy-meeting-recorder
+          chmod +x target/release/minutes
           # small.en keeps a run short on GitHub's four cores; the bench is
           # about who said what, which does not depend on the model.
           # shellcheck disable=SC2086 # CASES holds several arguments

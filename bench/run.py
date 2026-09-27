@@ -3,7 +3,7 @@
 
     bench/run.py [--bin PATH] [--case NAME ...] [--ami] [--json FILE]
 
---bin     the binary to test (default: target/release/omarchy-meeting-recorder)
+--bin     the binary to test (default: target/release/minutes)
 --case    only these cases (default: all)
 --ami     also a real meeting from the AMI corpus, downloaded to bench/.cache
 --ami-minutes  how much of that meeting (default 5, 0 for all 17 minutes)
@@ -263,7 +263,7 @@ def fixtures():
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--bin", default=str(HERE.parent / "target/release/omarchy-meeting-recorder"))
+    parser.add_argument("--bin", default=str(HERE.parent / "target/release/minutes"))
     parser.add_argument("--case", nargs="*")
     parser.add_argument("--ami", action="store_true")
     parser.add_argument("--ami-minutes", type=int, default=5)
