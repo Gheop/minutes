@@ -23,6 +23,12 @@ pub const APP_NAME: &str = "minutes";
 /// The name those paths had before, from the project Minutes comes from.
 const OLD_NAME: &str = "omarchy-meeting-recorder";
 
+/// Reports a problem the app goes on despite. The app sends it to the
+/// journal: the instance started with the session has no terminal.
+pub fn warn(message: impl std::fmt::Display) {
+    glib::g_warning!(APP_NAME, "{}", message);
+}
+
 /// Moves the config, the models and the recordings waiting in the cache from
 /// the paths they had under the old name. Called at start, before anything
 /// reads them; does nothing once they have moved.
@@ -37,7 +43,7 @@ pub fn move_old_paths() {
     for dir in dirs.into_iter().flatten() {
         let old = dir.with_file_name(OLD_NAME);
         if let Err(e) = move_into(&old, dir) {
-            eprintln!("{APP_NAME}: could not move {}: {e}", old.display());
+            warn(format!("could not move {}: {e}", old.display()));
         }
     }
 }

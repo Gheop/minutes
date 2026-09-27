@@ -220,6 +220,9 @@ fn capture(device: &str, shared: &Mutex<Inner>) {
         .stderr(Stdio::null())
         .spawn()
     else {
+        crate::warn(format!(
+            "could not start parec for {device}: nothing is recorded from it"
+        ));
         return;
     };
     {
@@ -236,6 +239,7 @@ fn capture(device: &str, shared: &Mutex<Inner>) {
     // So a crash loses at most a second: flush every second, and push it to
     // the disk itself every half minute in case the machine goes down too.
     let mut chunks: u64 = 0;
+    let mut write_failed = false;
     while stdout.read_exact(&mut buf).is_ok() {
         chunks += 1;
         if shared.lock().unwrap().muted {
@@ -268,7 +272,13 @@ fn capture(device: &str, shared: &Mutex<Inner>) {
                 write_silence(file, gap);
                 clock.written += gap + buf.len() as u64;
             }
-            let _ = file.write_all(&buf);
+            if let Err(e) = file.write_all(&buf)
+                && !write_failed
+            {
+                // Once: a full disk would say it every 100 ms.
+                crate::warn(format!("could not write what {device} records: {e}"));
+                write_failed = true;
+            }
             if chunks.is_multiple_of(50) {
                 let _ = file.flush();
             }

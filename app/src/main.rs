@@ -4,13 +4,14 @@
 mod window;
 
 use std::cell::Cell;
+use std::io::IsTerminal;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use adw::prelude::*;
 use gettextrs::{LocaleCategory, gettext};
 use gtk::glib;
-use minutes_engine::{diarize, transcribe};
+use minutes_engine::{diarize, session, transcribe};
 
 pub const APP_ID: &str = "io.github.gheop.Minutes";
 
@@ -33,14 +34,36 @@ fn locale_dir() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("/usr/share/locale"))
 }
 
+/// Sends warnings to the journal unless a terminal shows them: the instance
+/// started with the session has its output thrown away.
+fn log_to_journal() {
+    glib::log_set_writer_func(|level, fields| {
+        if !std::io::stderr().is_terminal()
+            && glib::log_writer_journald(level, fields) == glib::LogWriterOutput::Handled
+        {
+            return glib::LogWriterOutput::Handled;
+        }
+        glib::log_writer_default(level, fields)
+    });
+}
+
 fn main() -> glib::ExitCode {
     let args: Vec<String> = std::env::args().collect();
+    let command = args.get(1).map(String::as_str);
+    // The command-line tools keep their warnings on stderr, for whoever runs them.
+    if !matches!(
+        command,
+        Some("transcribe" | "transcribe-file" | "diarize" | "write-up")
+    ) {
+        log_to_journal();
+    }
     minutes_engine::move_old_paths();
     // The engine's command-line tools, for scripts and the bench.
-    match args.get(1).map(String::as_str) {
+    match command {
         Some("transcribe") => return transcribe::cli(&args[2..]),
         Some("transcribe-file") => return transcribe::cli_file(&args[2..]),
         Some("diarize") => return diarize::cli(&args[2..]),
+        Some("write-up") => return session::cli(&args[2..]),
         _ => {}
     }
 
@@ -166,10 +189,10 @@ fn screenshot_and_quit(window: &gtk::Window, path: PathBuf) {
             texture.save_to_png(&path).ok()
         });
         if saved.is_none() {
-            eprintln!(
-                "minutes: could not save the screenshot to {}",
+            minutes_engine::warn(format!(
+                "could not save the screenshot to {}",
                 path.display()
-            );
+            ));
         }
         window.application().inspect(|app| app.quit());
     });

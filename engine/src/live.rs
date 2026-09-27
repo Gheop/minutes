@@ -154,8 +154,12 @@ fn run(
     updates: &async_channel::Sender<Update>,
     stop: &Abort,
 ) -> Vec<Segment> {
-    let Ok(context) = load_preview_whisper(model) else {
-        return Vec::new();
+    let context = match load_preview_whisper(model) {
+        Ok(context) => context,
+        Err(e) => {
+            crate::warn(format!("no preview: {e}"));
+            return Vec::new();
+        }
     };
     let (mic_raw, system_raw) = crate::session::raw_tracks(staging);
     let (mut mic, mut computer) = (Follow::new(mic_raw), Follow::new(system_raw));
@@ -248,7 +252,12 @@ fn run(
                         written.extend(new);
                     }
                 }
-                Err(_) => return written,
+                Err(e) => {
+                    if !stop.load(Ordering::Relaxed) {
+                        crate::warn(format!("the preview stopped: {e}"));
+                    }
+                    return written;
+                }
             }
         }
         // Once a second, the stretch still going on each side, as a draft.

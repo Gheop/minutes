@@ -118,7 +118,12 @@ cargo test --workspace --release        # the window test needs a display, and i
 gjs -m extension/tests/status.test.js   # what the top bar shows
 extension/tests/shell-smoke.sh          # loads the extension into a GNOME Shell with no screen
 bench/run.py --ami --check              # transcript and speaker quality against the thresholds
+bench/write_up.py                       # what happens after Stop, from the raw tracks to the meeting folder
 ```
+
+The CI builds and tests without GPU support: the CUDA toolkit is about 3 GB to install for a job that would only compile. Build with `--features cuda` before a release.
+
+Warnings from the app go to the journal: `journalctl --user -t minutes`.
 
 ## Configuration
 
@@ -137,6 +142,13 @@ fix = "Okafur => Okafor"
 MIT, like the project it comes from. See [LICENSE](LICENSE).
 
 ## Changelog
+
+### v0.8.1 — Problems you can find (2026-09-27)
+
+- Warnings go to the journal (`journalctl --user -t minutes`) instead of being lost when Minutes runs in the background
+- A track that cannot be written, a failed preview or a missing `parec` now leave a warning
+- The top bar menu no longer throws an error when the screen locks while the preview updates
+- `minutes write-up <folder>` does what the app does after Stop, and the CI checks it on a recorded call
 
 ### v0.8.0 — Minutes under its own name (2026-09-27)
 

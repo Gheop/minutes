@@ -65,6 +65,7 @@ class MinutesIndicator extends PanelMenu.Button {
         this._addedSignal = 0;
         this._status = null;
         this._tick = 0;
+        this._scroll = 0;
         this._update();
 
         this._watch = Gio.bus_watch_name(Gio.BusType.SESSION, BUS_NAME,
@@ -123,12 +124,16 @@ class MinutesIndicator extends PanelMenu.Button {
         }
         this._previewSection.actor.visible = this._lines.length > 0;
         this._update();
-        // Keep the newest line in sight once it is laid out.
-        GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
-            const adjustment = this._previewScroll.vadjustment;
-            adjustment.value = adjustment.upper;
-            return GLib.SOURCE_REMOVE;
-        });
+        // Keep the newest line in sight once it is laid out. Removed in
+        // destroy(): locking the screen can destroy the menu before it runs.
+        if (!this._scroll) {
+            this._scroll = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+                this._scroll = 0;
+                const adjustment = this._previewScroll.vadjustment;
+                adjustment.value = adjustment.upper;
+                return GLib.SOURCE_REMOVE;
+            });
+        }
     }
 
     _setStatus(variant) {
@@ -175,6 +180,10 @@ class MinutesIndicator extends PanelMenu.Button {
         if (this._tick) {
             GLib.source_remove(this._tick);
             this._tick = 0;
+        }
+        if (this._scroll) {
+            GLib.source_remove(this._scroll);
+            this._scroll = 0;
         }
         Gio.bus_unwatch_name(this._watch);
         this._disconnect();

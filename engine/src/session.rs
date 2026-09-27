@@ -128,6 +128,78 @@ pub fn save_audio(staging: &Path, out: &Path, format: Format) -> (bool, bool) {
     )
 }
 
+/// Everything after Stop for the recording in `staging`: its audio kept in
+/// the meeting folder `out`, then its transcript, with the two sides called
+/// `speakers`. The raw files go once the audio and the tracks are kept, even
+/// if the transcript fails: it can be made again from the tracks. Blocking:
+/// run it off the main thread; `events` tells how far it is.
+pub fn write_up(
+    staging: &Path,
+    out: &Path,
+    note: &Note,
+    speakers: [String; 2],
+    events: &crate::transcribe::Events,
+    abort: &crate::transcribe::Abort,
+) -> Result<(), String> {
+    let saved = save_audio(staging, out, note.format);
+    let mut manifest = Manifest {
+        title: note.title.clone(),
+        started_at: note.started_at,
+        duration_secs: raw_duration(staging),
+        format: note.format,
+        language: note.language.clone(),
+        speakers: speakers.to_vec(),
+        labels: Vec::new(),
+        imported: None,
+        speaker_count: None,
+        model: None,
+    };
+    // Written before the transcript, so the folder opens as a meeting even
+    // if the transcript never comes.
+    if let Err(e) = meeting::write(out, &manifest) {
+        crate::warn(format!("could not write {}: {e}", out.display()));
+    }
+    let result = transcribe_into(staging, out, &mut manifest, &note.language, events, abort);
+    if saved == (true, true) {
+        let _ = std::fs::remove_dir_all(staging);
+    }
+    result
+}
+
+/// `minutes write-up <recording folder> [--into folder] [--model name]`:
+/// what the app does after Stop, for a staging folder. Prints the meeting
+/// folder it made, in the meetings folder or in `--into`.
+pub fn cli(args: &[String]) -> glib::ExitCode {
+    let mut staging = None;
+    let mut root = meetings_root();
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--into" => match iter.next() {
+                Some(dir) => root = PathBuf::from(dir),
+                None => return crate::transcribe::usage(),
+            },
+            "--model" | "-m" => match iter.next() {
+                Some(name) => crate::models::set_override(name),
+                None => return crate::transcribe::usage(),
+            },
+            _ if staging.is_none() => staging = Some(PathBuf::from(arg)),
+            _ => return crate::transcribe::usage(),
+        }
+    }
+    let Some(staging) = staging else {
+        return crate::transcribe::usage();
+    };
+    crate::transcribe::run_cli(|events, abort| {
+        let note =
+            Note::read(&staging).ok_or_else(|| format!("no recording in {}", staging.display()))?;
+        let out = meeting_dir(&root, note.started_at, &note.title);
+        let speakers = [meeting::DEFAULT_YOU.into(), meeting::DEFAULT_REMOTE.into()];
+        write_up(&staging, &out, &note, speakers, events, abort)?;
+        Ok(format!("{}\n", out.display()))
+    })
+}
+
 /// Transcribes the two tracks in `tracks` (a staging folder or a meeting
 /// folder's kept tracks) into `out/transcript.md`, names the speakers and
 /// writes the manifest. Blocking: run it off the main thread; `events` tells
