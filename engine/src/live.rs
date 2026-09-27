@@ -16,8 +16,8 @@ use std::thread::JoinHandle;
 use std::time::Duration;
 
 use crate::transcribe::{
-    Abort, Downsampler, Region, Segment, WHISPER_RATE, load_preview_whisper, preview_pass,
-    preview_regions, raw_to_mono,
+    Abort, Downsampler, FRAME, Levels, Region, Segment, WHISPER_RATE, load_preview_whisper,
+    preview_pass, preview_regions, raw_to_mono,
 };
 
 /// A stretch counts as ended when this much has been heard after it.
@@ -25,6 +25,10 @@ const SETTLED: usize = WHISPER_RATE * 4 / 5;
 /// Someone talking on without a pause: a stretch still going is cut once it
 /// is this long, at its quietest moment, rather than waited for.
 const LONG: usize = WHISPER_RATE * 5;
+/// How much before where the transcription is up to the stretches are looked
+/// for again, so one going on there is found as it would be on the whole
+/// recording.
+const MARGIN: usize = WHISPER_RATE * 2;
 
 /// What the preview sends out as it goes.
 #[derive(Debug, Clone)]
@@ -90,7 +94,9 @@ struct Follow {
     /// Bytes of a stereo frame not complete yet.
     carry: Vec<u8>,
     down: Downsampler,
+    /// The recording from sample `base` on; what is before was let go of.
     samples: Vec<f32>,
+    base: usize,
 }
 
 impl Follow {
@@ -101,6 +107,25 @@ impl Follow {
             carry: Vec::new(),
             down: Downsampler::new(),
             samples: Vec::new(),
+            base: 0,
+        }
+    }
+
+    /// Samples heard so far, including those let go of.
+    fn heard(&self) -> usize {
+        self.base + self.samples.len()
+    }
+
+    /// `samples[from..to]` on the recording's timeline.
+    fn between(&self, from: usize, to: usize) -> &[f32] {
+        &self.samples[from - self.base..to - self.base]
+    }
+
+    /// Lets go of the samples before `at`.
+    fn forget_before(&mut self, at: usize) {
+        if at > self.base {
+            self.samples.drain(..at - self.base);
+            self.base = at;
         }
     }
 
@@ -139,6 +164,7 @@ fn run(
     let mut earlier = [String::new(), String::new()];
     let mut written = Vec::new();
     let mut drafts = [String::new(), String::new()];
+    let mut levels = [Levels::default(), Levels::default()];
     let mut tick = 0u64;
     while !stop.load(Ordering::Relaxed) {
         tick += 1;
@@ -151,12 +177,22 @@ fn run(
         }
         mic.catch_up();
         computer.catch_up();
-        let heard = mic.samples.len().min(computer.samples.len());
+        let heard = mic.heard().min(computer.heard());
         if heard < SETTLED {
             continue;
         }
-        let (mic_track, mic_regions, computer_track, computer_regions) =
-            preview_regions(&mic.samples[..heard], &computer.samples[..heard]);
+        levels[0].update(&mic.samples, mic.base, heard);
+        levels[1].update(&computer.samples, computer.base, heard);
+        // Only the part not transcribed yet is looked at, and kept.
+        let from = done[0].min(done[1]).saturating_sub(MARGIN) / FRAME * FRAME;
+        mic.forget_before(from);
+        computer.forget_before(from);
+        let (mic_track, mic_regions, computer_track, computer_regions) = preview_regions(
+            mic.between(from, heard),
+            computer.between(from, heard),
+            from,
+            &levels,
+        );
         for (side, (track, regions, label)) in [
             (&mic_track, &mic_regions, crate::meeting::DEFAULT_YOU),
             (
@@ -168,13 +204,18 @@ fn run(
         .into_iter()
         .enumerate()
         {
-            let ready = ready_batch(regions, done[side], heard, track);
+            let ready = ready_batch(regions, done[side], heard, track, from);
             if ready.is_empty() {
+                // Nothing said on this side since: no need to look back there.
+                if pending(regions, done[side]).is_empty() {
+                    done[side] = done[side].max(heard.saturating_sub(WHISPER_RATE));
+                }
                 continue;
             }
             match preview_pass(
                 &context,
                 track,
+                from,
                 &ready,
                 label,
                 language,
@@ -233,6 +274,7 @@ fn run(
                         let text = preview_pass(
                             &context,
                             track,
+                            from,
                             &[piece],
                             label,
                             language,
@@ -271,7 +313,13 @@ fn run(
 /// still going that is already long, cut at its quietest moment so someone
 /// talking on does not hold the preview back. Each goes to whisper as soon as
 /// it is there: the text heard before is its context.
-fn ready_batch(regions: &[Region], done: usize, heard: usize, track: &[f32]) -> Vec<Region> {
+fn ready_batch(
+    regions: &[Region],
+    done: usize,
+    heard: usize,
+    track: &[f32],
+    from: usize,
+) -> Vec<Region> {
     let mut ready: Vec<Region> = pending(regions, done)
         .into_iter()
         .filter(|r| r.end + SETTLED <= heard)
@@ -279,7 +327,7 @@ fn ready_batch(regions: &[Region], done: usize, heard: usize, track: &[f32]) -> 
     if let Some(open) = open_stretch(regions, done, heard) {
         let settled = heard.saturating_sub(SETTLED);
         if settled >= open.start + LONG {
-            let at = quietest(track, open.start + LONG / 2, settled);
+            let at = from + quietest(track, open.start + LONG / 2 - from, settled - from);
             ready.push(Region {
                 start: open.start,
                 onset: open.onset,
@@ -442,11 +490,11 @@ mod tests {
         let secs = |s: f64| (s * WHISPER_RATE as f64) as usize;
         let track = vec![0.1; secs(40.0)];
         // The first has ended (0.8 s heard after it), the second not yet.
-        assert_eq!(ready_batch(&regions, 0, secs(2.5), &track).len(), 1);
+        assert_eq!(ready_batch(&regions, 0, secs(2.5), &track, 0).len(), 1);
         // Both short ones have ended.
-        assert_eq!(ready_batch(&regions, 0, secs(4.4), &track).len(), 2);
+        assert_eq!(ready_batch(&regions, 0, secs(4.4), &track, 0).len(), 2);
         // After them, the third is still going and short: nothing.
-        assert!(ready_batch(&regions, secs(3.5), secs(8.5), &track).is_empty());
+        assert!(ready_batch(&regions, secs(3.5), secs(8.5), &track, 0).is_empty());
         assert!(open_stretch(&regions, secs(3.5), secs(8.5)).is_some());
     }
 
@@ -460,9 +508,9 @@ mod tests {
             .for_each(|x| *x = 0.0);
         let going = [region(0.0, 7.0)];
         // Not long enough yet.
-        assert!(ready_batch(&going, 0, secs(5.0), &track).is_empty());
+        assert!(ready_batch(&going, 0, secs(5.0), &track, 0).is_empty());
         // Long enough: the part up to the breath goes.
-        let cut = ready_batch(&going, 0, secs(7.5), &track);
+        let cut = ready_batch(&going, 0, secs(7.5), &track, 0);
         assert_eq!(cut.len(), 1);
         assert!(
             (secs(3.95)..=secs(4.1)).contains(&cut[0].end),
@@ -470,7 +518,7 @@ mod tests {
             cut[0].end
         );
         // The rest starts where the cut was.
-        let rest = ready_batch(&[region(0.0, 12.0)], cut[0].end, secs(20.0), &track);
+        let rest = ready_batch(&[region(0.0, 12.0)], cut[0].end, secs(20.0), &track, 0);
         assert_eq!(rest[0].start, cut[0].end);
     }
 

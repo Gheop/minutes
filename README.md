@@ -139,6 +139,12 @@ MIT, like the project it comes from. See [LICENSE](LICENSE).
 
 ## Changelog
 
+### v0.7.2 — A preview that keeps up (2026-09-27)
+
+- The live preview no longer slows down as a call goes on: finding speech took a second per look after 16 minutes, it now takes a few milliseconds after an hour
+- Its memory stays flat instead of growing with the length of the call
+- The lines it writes are the same as before
+
 ### v0.7.1 — Safer data (2026-09-27)
 
 - Models are downloaded at a fixed revision and refused unless their SHA-256 matches
