@@ -147,6 +147,10 @@ MIT, like the project it comes from. See [LICENSE](LICENSE).
 
 ## Changelog
 
+### v0.9.1 — A steadier preview (2026-09-27)
+
+- The preview's lines fall behind less after a passage whisper found hard: 4.7 s behind the call at the 90th percentile instead of 5.0 s, 5.5 s at worst instead of 6.2 s
+
 ### v0.9.0 — Light at rest (2026-09-27)
 
 - The Vulkan build is now the recommended one, NVIDIA cards included: Minutes waiting in the background takes 58 MB instead of 237 MB with CUDA, a transcript is ready slightly sooner (42.3 s against 44.4 s for 5 minutes of call), and quality and the live preview are the same

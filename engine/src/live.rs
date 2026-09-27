@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::JoinHandle;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::transcribe::{
     Abort, Downsampler, FRAME, Levels, Region, Segment, WHISPER_RATE, load_preview_whisper,
@@ -25,6 +25,8 @@ const SETTLED: usize = WHISPER_RATE * 4 / 5;
 /// Someone talking on without a pause: a stretch still going is cut once it
 /// is this long, at its quietest moment, rather than waited for.
 const LONG: usize = WHISPER_RATE * 5;
+/// How often the preview looks at what has been recorded.
+const TICK: Duration = Duration::from_millis(500);
 /// How much before where the transcription is up to the stretches are looked
 /// for again, so one going on there is found as it would be on the whole
 /// recording.
@@ -170,15 +172,24 @@ fn run(
     let mut drafts = [String::new(), String::new()];
     let mut levels = [Levels::default(), Levels::default()];
     let mut tick = 0u64;
+    let mut next = Instant::now();
     while !stop.load(Ordering::Relaxed) {
         tick += 1;
         // Twice a second: whisper gets a stretch a second or so after it ends.
-        for _ in 0..2 {
+        // The time whisper took counts in the half second, so a slow pass
+        // does not push every later line back by as much again.
+        next += TICK;
+        while Instant::now() < next {
             if stop.load(Ordering::Relaxed) {
                 return written;
             }
-            std::thread::sleep(Duration::from_millis(250));
+            std::thread::sleep((next - Instant::now()).min(Duration::from_millis(50)));
         }
+        // After a pass longer than a tick, one look straight away, not a
+        // burst of them to catch up.
+        next = Instant::now()
+            .checked_sub(TICK)
+            .map_or(next, |t| next.max(t));
         mic.catch_up();
         computer.catch_up();
         let heard = mic.heard().min(computer.heard());
@@ -421,8 +432,13 @@ mod tests {
         let (tx, rx) = async_channel::unbounded();
         let started = std::time::Instant::now();
         let preview = Preview::start(&staging, "en", tx);
-        // A second of audio every 100 ms, or every second with MINUTES_PREVIEW_SPEED=1.
+        // A tenth of a second of audio at a time, ten times faster than the
+        // call, or at its pace with MINUTES_PREVIEW_SPEED=1: the recorder
+        // writes every 40 to 60 ms (its buffer holds two or three 20 ms
+        // pieces), so whole seconds would add half a second of delay the
+        // app does not have.
         let second = 48_000 * 4;
+        let piece = second / 10;
         let pace = std::env::var("MINUTES_PREVIEW_SPEED")
             .ok()
             .and_then(|s| s.parse::<u64>().ok())
@@ -430,11 +446,19 @@ mod tests {
         let mut delays = Vec::new();
         let mut draft_ages = Vec::new();
         let mut written = 0;
+        let (mut mic_file, mut computer_file) = (
+            File::create(&mic_path).unwrap(),
+            File::create(&computer_path).unwrap(),
+        );
         while written < mic.len().max(computer.len()) {
-            written = (written + second).min(mic.len().max(computer.len()));
-            std::fs::write(&mic_path, &mic[..written.min(mic.len())]).unwrap();
-            std::fs::write(&computer_path, &computer[..written.min(computer.len())]).unwrap();
-            std::thread::sleep(std::time::Duration::from_millis(1000 / pace));
+            let before = written;
+            written = (written + piece).min(mic.len().max(computer.len()));
+            // Only what is new, as the recorder appends it.
+            for (file, track) in [(&mut mic_file, &mic), (&mut computer_file, &computer)] {
+                let part = &track[before.min(track.len())..written.min(track.len())];
+                std::io::Write::write_all(file, part).unwrap();
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100 / pace));
             while let Ok(update) = rx.try_recv() {
                 let lines = match update {
                     Update::Lines(lines) => lines,

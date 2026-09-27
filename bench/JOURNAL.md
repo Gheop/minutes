@@ -57,3 +57,11 @@ Browsers and Teams closed for every series.
 Quality, Vulkan against CUDA, same model (`large-v3-turbo`): on the bench's 8 cases, 5 score a little higher, 3 the same, and ES2004a's call (first 5 minutes) loses on the side (96.7 → 93.0 %) with a fourth speaker. On whole meetings the differences go both ways: ES2004a import 96.7 → 94.1 % right person, ES2004a call 94.9 → 97.1 % right side and 92.4 → 93.5 % right person, IS1009a import 89.4 → 89.1 %, IS1009a call 34.7 → 33.0 % side and 73.1 → 75.0 % person. The speaker error is identical everywhere (the speakers are found on the CPU either way). Both builds fall into whisper's repetition loops, at different places: tiny numeric differences take the decoding down different paths. No bias either way: the same quality.
 
 The preview, 10 alternating runs each: 43 lines every time for both; median delay 2.7 s (CUDA) and 2.5 s (Vulkan), 90th percentile 4.8 and 4.6 s, worst line 6.5 and 7.5 s, drafts 1.0 s at the 90th percentile for both. The differences are within the half-second tick: the same.
+
+### The preview
+
+`bench/preview.py` replayed the call fixture in whole seconds, rewriting the files each time, while the recorder appends every 40 to 60 ms (its 8 KiB buffer holds two or three 20 ms pieces): the replay now appends tenths of a second. With it, 10 runs: 46 lines (44 to 51: where a long stretch is cut now depends on when audio arrives), delay 2.8 s median, 5.0 s at the 90th percentile, drafts 0.3 / 1.5 s. Timing each pass: whisper takes 0.26 s for a batch at the median, but one pass in ten retries at a higher temperature and takes 1.3 to 1.4 s; drafts, twice a second on each side, take 0.26 s at the median and up to 2.4 s (4.3 s for the very first, while the GPU warms up).
+
+| # | Hypothesis | Files | Result | Δ p90 delay | Δ RSS | Verdict |
+|---|---|---|---|---|---|---|
+| 8 | The preview sleeps half a second after its work rather than until the next half second, so each line also waits for the passes before it; counting whisper's time in the tick should shorten the waits behind slow passes | `live.rs` | 10 alternating runs: median 2.8 s both; 90th percentile 5.0 → 4.7 s (±0.13 / 0.15), worst line 6.2 → 5.5 s, drafts at the 90th percentile 1.5 → 1.4 s; 46 and 45.5 lines. The same work, done sooner after a slow pass | −6 % (worst −11 %) | — | Kept |
