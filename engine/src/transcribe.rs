@@ -1627,7 +1627,7 @@ pub fn cli(args: &[String]) -> glib::ExitCode {
     run_cli(|events, abort| {
         let mic = load_track(mic_path)?;
         let computer = load_track(computer_path)?;
-        transcribe(&mic, &computer, &language, events, abort)
+        transcribe(&mic, &computer, &language, events, abort).map(|t| markdown_now(&t))
     })
 }
 
@@ -1659,13 +1659,24 @@ pub fn cli_file(args: &[String]) -> glib::ExitCode {
     };
     run_cli(|events, abort| {
         let track = load_track(path)?;
-        transcribe_single(&track, &language, speakers, events, abort)
+        transcribe_single(&track, &language, speakers, events, abort).map(|t| markdown_now(&t))
     })
 }
 
+/// A transcript made from the command line, dated now.
+fn markdown_now(transcript: &Transcript) -> String {
+    let date = glib::DateTime::now_local()
+        .and_then(|t| t.format("%Y-%m-%d %H:%M"))
+        .map(|s| s.to_string())
+        .unwrap_or_default();
+    to_markdown("Transcript", &date, transcript)
+}
+
 /// Runs a transcription for the command line: progress and live lines on
-/// stderr, the Markdown on stdout.
-fn run_cli(work: impl FnOnce(&Events, &Abort) -> Result<Transcript, String>) -> glib::ExitCode {
+/// stderr, what `work` gives on stdout.
+pub(crate) fn run_cli(
+    work: impl FnOnce(&Events, &Abort) -> Result<String, String>,
+) -> glib::ExitCode {
     let (tx, rx) = async_channel::unbounded();
     let started = Instant::now();
     let reporter = std::thread::spawn(move || {
@@ -1696,12 +1707,8 @@ fn run_cli(work: impl FnOnce(&Events, &Abort) -> Result<Transcript, String>) -> 
     let _ = reporter.join();
 
     match result {
-        Ok(transcript) => {
-            let date = glib::DateTime::now_local()
-                .and_then(|t| t.format("%Y-%m-%d %H:%M"))
-                .map(|s| s.to_string())
-                .unwrap_or_default();
-            print!("{}", to_markdown("Transcript", &date, &transcript));
+        Ok(output) => {
+            print!("{output}");
             eprintln!("Done in {:.1}s", started.elapsed().as_secs_f64());
             glib::ExitCode::SUCCESS
         }
@@ -1712,13 +1719,14 @@ fn run_cli(work: impl FnOnce(&Events, &Abort) -> Result<Transcript, String>) -> 
     }
 }
 
-fn usage() -> glib::ExitCode {
+pub(crate) fn usage() -> glib::ExitCode {
     eprintln!(
         "Usage: {APP_NAME} transcribe <mic> <computer> [--language auto|en|nl|...] [--model name]"
     );
     eprintln!(
         "       {APP_NAME} transcribe-file <audio> [--speakers N] [--language auto|en|nl|...] [--model name]"
     );
+    eprintln!("       {APP_NAME} write-up <recording folder> [--into folder] [--model name]");
     glib::ExitCode::from(2)
 }
 

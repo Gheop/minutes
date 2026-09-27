@@ -11,7 +11,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use adw::prelude::*;
 use gettextrs::{LocaleCategory, gettext};
 use gtk::glib;
-use minutes_engine::{diarize, transcribe};
+use minutes_engine::{diarize, session, transcribe};
 
 pub const APP_ID: &str = "io.github.gheop.Minutes";
 
@@ -51,7 +51,10 @@ fn main() -> glib::ExitCode {
     let args: Vec<String> = std::env::args().collect();
     let command = args.get(1).map(String::as_str);
     // The command-line tools keep their warnings on stderr, for whoever runs them.
-    if !matches!(command, Some("transcribe" | "transcribe-file" | "diarize")) {
+    if !matches!(
+        command,
+        Some("transcribe" | "transcribe-file" | "diarize" | "write-up")
+    ) {
         log_to_journal();
     }
     minutes_engine::move_old_paths();
@@ -60,6 +63,7 @@ fn main() -> glib::ExitCode {
         Some("transcribe") => return transcribe::cli(&args[2..]),
         Some("transcribe-file") => return transcribe::cli_file(&args[2..]),
         Some("diarize") => return diarize::cli(&args[2..]),
+        Some("write-up") => return session::cli(&args[2..]),
         _ => {}
     }
 

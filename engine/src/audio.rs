@@ -220,7 +220,9 @@ fn capture(device: &str, shared: &Mutex<Inner>) {
         .stderr(Stdio::null())
         .spawn()
     else {
-        crate::warn(format!("could not start parec for {device}: nothing is recorded from it"));
+        crate::warn(format!(
+            "could not start parec for {device}: nothing is recorded from it"
+        ));
         return;
     };
     {

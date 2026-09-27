@@ -15,7 +15,7 @@ use minutes_engine::audio::{self, Source};
 use minutes_engine::calls::{self, Change, Tracker};
 use minutes_engine::export::Format;
 use minutes_engine::live::{Preview, Update};
-use minutes_engine::meeting::{self, Manifest};
+use minutes_engine::meeting;
 use minutes_engine::session::{self, Note};
 use minutes_engine::teams;
 use minutes_engine::transcribe::{self, Abort, CANCELLED, Event, LANGUAGES, Segment, Transcript};
@@ -269,7 +269,9 @@ impl MinutesWindow {
                     return;
                 };
                 let Some(dump) = dump else {
-                    minutes_engine::warn("pw-dump is missing or failed; calls will not be detected");
+                    minutes_engine::warn(
+                        "pw-dump is missing or failed; calls will not be detected",
+                    );
                     return;
                 };
                 let now = glib::monotonic_time() as f64 / 1e6;
@@ -742,50 +744,25 @@ impl MinutesWindow {
         let lines = gio::spawn_blocking(move || preview.map(Preview::finish).unwrap_or_default())
             .await
             .unwrap_or_default();
-        let (audio_out, audio_staging) = (out.clone(), staging.clone());
-        let saved = gio::spawn_blocking(move || {
-            session::save_audio(&audio_staging, &audio_out, note.format)
-        })
-        .await
-        .unwrap_or((false, false));
-        self.save_preview(&out, &note, lines);
-        let mut manifest = Manifest {
-            title: note.title.clone(),
-            started_at: note.started_at,
-            duration_secs: session::raw_duration(&staging),
-            format: note.format,
-            language: note.language.clone(),
-            speakers: {
-                let seen = self.imp().teams.borrow();
-                vec![
-                    seen.me
-                        .clone()
-                        .unwrap_or_else(|| meeting::DEFAULT_YOU.to_owned()),
-                    seen.other().unwrap_or(meeting::DEFAULT_REMOTE).to_owned(),
-                ]
-            },
-            labels: Vec::new(),
-            imported: None,
-            speaker_count: None,
-            model: None,
-        };
-        if let Err(e) = meeting::write(&out, &manifest) {
-            minutes_engine::warn(format!("could not write {}: {e}", out.display()));
+        if let Err(e) = session::private_dir(&session::meetings_root(), &out) {
+            minutes_engine::warn(format!("could not make {}: {e}", out.display()));
         }
+        self.save_preview(&out, &note, lines);
+        let speakers = {
+            let seen = self.imp().teams.borrow();
+            [
+                seen.me
+                    .clone()
+                    .unwrap_or_else(|| meeting::DEFAULT_YOU.to_owned()),
+                seen.other().unwrap_or(meeting::DEFAULT_REMOTE).to_owned(),
+            ]
+        };
 
         let (events_tx, events_rx) = async_channel::unbounded::<Event>();
         let (done_tx, done_rx) = async_channel::bounded(1);
-        let (tracks, dir) = (staging.clone(), out.clone());
+        let dir = out.clone();
         std::thread::spawn(move || {
-            let language = manifest.language.clone();
-            let result = session::transcribe_into(
-                &tracks,
-                &dir,
-                &mut manifest,
-                &language,
-                &events_tx,
-                &abort,
-            );
+            let result = session::write_up(&staging, &dir, &note, speakers, &events_tx, &abort);
             let _ = done_tx.send_blocking(result);
             let _ = events_tx.send_blocking(Event::Finished);
         });
@@ -806,10 +783,6 @@ impl MinutesWindow {
             .recv()
             .await
             .unwrap_or_else(|_| Err("the transcription stopped unexpectedly".into()));
-        // The kept tracks are enough to transcribe again; the raw files can go.
-        if saved == (true, true) {
-            let _ = std::fs::remove_dir_all(&staging);
-        }
         result.map(|()| out)
     }
 
