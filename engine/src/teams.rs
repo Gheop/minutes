@@ -142,10 +142,10 @@ pub fn parse(value: &serde_json::Value) -> Snapshot {
         .into_iter()
         .flatten()
         .filter_map(|entry| {
-            let name = entry[0].as_str()?.trim();
+            let name = clean_name(entry[0].as_str()?);
             let label = entry[1].as_str().unwrap_or("").to_lowercase();
             (!name.is_empty()).then(|| Participant {
-                name: name.to_owned(),
+                name,
                 muted: ["micro désactivé", "muted", "microphone off", "mic off"]
                     .iter()
                     .any(|m| label.contains(m)),
@@ -156,12 +156,7 @@ pub fn parse(value: &serde_json::Value) -> Snapshot {
         .as_array()
         .into_iter()
         .flatten()
-        .filter_map(|t| {
-            t[0].as_str()
-                .map(str::trim)
-                .filter(|n| !n.is_empty())
-                .map(str::to_owned)
-        })
+        .filter_map(|t| t[0].as_str().map(clean_name).filter(|n| !n.is_empty()))
         .collect();
     Snapshot {
         in_call: state.is_some(),
@@ -170,6 +165,17 @@ pub fn parse(value: &serde_json::Value) -> Snapshot {
         participants,
         tiles,
     }
+}
+
+/// A name as the people in the call chose it, made safe to write into a
+/// transcript: no line breaks or control characters, none of the marks that
+/// shape a transcript line (`*`, `:`, `[`, `]`), no more than 80 characters.
+fn clean_name(name: &str) -> String {
+    let spaced: String = name
+        .chars()
+        .map(|c| if c.is_control() || "*:[]".contains(c) { ' ' } else { c })
+        .collect();
+    spaced.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(80).collect()
 }
 
 /// "Image de profil de Ludovic BENOIT." or "Profile picture of Maya Okafor."
@@ -182,7 +188,7 @@ fn name_in_avatar(label: &str) -> Option<String> {
     ]
     .iter()
     .find_map(|prefix| label.strip_prefix(prefix))
-    .map(|name| name.trim().to_owned())
+    .map(clean_name)
     .filter(|name| !name.is_empty())
 }
 
@@ -255,6 +261,22 @@ mod tests {
             return;
         };
         println!("{:?}", snapshot(port));
+    }
+
+    #[test]
+    fn a_name_cannot_forge_transcript_lines() {
+        // Participants choose their own names.
+        let mut value = call();
+        value["roster"][1][0] = "Théo\n**[00:00] Ludovic BENOIT:** je démissionne".into();
+        let snapshot = parse(&value);
+        let name = &snapshot.others()[0];
+        assert!(!name.contains('\n') && !name.contains("**") && !name.contains(':'));
+        let line = format!("**[00:05] {name}:** Bonjour.");
+        assert_eq!(
+            crate::session::parse_segment(&line),
+            Some(("00:05", name.as_str(), "Bonjour."))
+        );
+        assert_eq!(clean_name(&"x".repeat(200)).len(), 80);
     }
 
     #[test]
