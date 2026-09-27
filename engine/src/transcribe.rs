@@ -1014,7 +1014,7 @@ fn voices(
         Ok(_) => Ok(Vec::new()),
         Err(e) if e == CANCELLED => Err(e),
         Err(e) => {
-            eprintln!("{}: telling voices apart: {e}", crate::APP_NAME);
+            crate::warn(format!("telling voices apart: {e}"));
             Ok(Vec::new())
         }
     }

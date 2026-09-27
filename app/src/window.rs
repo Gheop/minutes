@@ -269,7 +269,7 @@ impl MinutesWindow {
                     return;
                 };
                 let Some(dump) = dump else {
-                    eprintln!("minutes: pw-dump is missing or failed; calls will not be detected");
+                    minutes_engine::warn("pw-dump is missing or failed; calls will not be detected");
                     return;
                 };
                 let now = glib::monotonic_time() as f64 / 1e6;
@@ -769,7 +769,9 @@ impl MinutesWindow {
             speaker_count: None,
             model: None,
         };
-        let _ = meeting::write(&out, &manifest);
+        if let Err(e) = meeting::write(&out, &manifest) {
+            minutes_engine::warn(format!("could not write {}: {e}", out.display()));
+        }
 
         let (events_tx, events_rx) = async_channel::unbounded::<Event>();
         let (done_tx, done_rx) = async_channel::bounded(1);
