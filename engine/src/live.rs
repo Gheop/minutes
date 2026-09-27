@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::JoinHandle;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::transcribe::{
     Abort, Downsampler, FRAME, Levels, Region, Segment, WHISPER_RATE, load_preview_whisper,
@@ -25,6 +25,8 @@ const SETTLED: usize = WHISPER_RATE * 4 / 5;
 /// Someone talking on without a pause: a stretch still going is cut once it
 /// is this long, at its quietest moment, rather than waited for.
 const LONG: usize = WHISPER_RATE * 5;
+/// How often the preview looks at what has been recorded.
+const TICK: Duration = Duration::from_millis(500);
 /// How much before where the transcription is up to the stretches are looked
 /// for again, so one going on there is found as it would be on the whole
 /// recording.
@@ -170,15 +172,22 @@ fn run(
     let mut drafts = [String::new(), String::new()];
     let mut levels = [Levels::default(), Levels::default()];
     let mut tick = 0u64;
+    let mut next = Instant::now();
     while !stop.load(Ordering::Relaxed) {
         tick += 1;
         // Twice a second: whisper gets a stretch a second or so after it ends.
-        for _ in 0..2 {
+        // The time whisper took counts in the half second, so a slow pass
+        // does not push every later line back by as much again.
+        next += TICK;
+        while Instant::now() < next {
             if stop.load(Ordering::Relaxed) {
                 return written;
             }
-            std::thread::sleep(Duration::from_millis(250));
+            std::thread::sleep((next - Instant::now()).min(Duration::from_millis(50)));
         }
+        // After a pass longer than a tick, one look straight away, not a
+        // burst of them to catch up.
+        next = Instant::now().checked_sub(TICK).map_or(next, |t| next.max(t));
         mic.catch_up();
         computer.catch_up();
         let heard = mic.heard().min(computer.heard());
