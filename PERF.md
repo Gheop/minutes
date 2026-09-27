@@ -17,6 +17,8 @@ The CUDA libraries are loaded with the program, and `libcublasLt` writes over 10
 
 Two things to know: whisper.cpp would take the first GPU ggml lists, which on this laptop is the Intel Arc (192 s instead of 42 s), so Minutes picks the first dedicated one; and the first transcript after a new build takes about 10 s longer, while the driver compiles the shaders.
 
+The preview then waited less behind slow passes: its half-second tick now includes whisper's time instead of coming on top of it. Over 10 alternating runs its lines were 4.7 s behind the call at the 90th percentile instead of 5.0 s, and 5.5 s at worst instead of 6.2 s; the median stays at 2.8 s. The replay it is measured on now appends a tenth of a second at a time, as the recorder does; whole seconds had added half a second of delay the app does not have.
+
 Not merged: running whisper in a worker process, so the app itself holds no GPU library (branch `perf-worker`). On top of Vulkan it saves 9 MB more at rest, not worth a second process and a protocol between them.
 
 ## First round: finding speakers where someone speaks
