@@ -118,6 +118,7 @@ cargo test --workspace --release        # the window test needs a display, and i
 gjs -m extension/tests/status.test.js   # what the top bar shows
 extension/tests/shell-smoke.sh          # loads the extension into a GNOME Shell with no screen
 bench/run.py --ami --check              # transcript and speaker quality against the thresholds
+bench/write_up.py                       # what happens after Stop, from the raw tracks to the meeting folder
 ```
 
 ## Configuration

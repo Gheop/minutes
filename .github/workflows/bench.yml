@@ -173,6 +173,11 @@ jobs:
           python3 bench/run.py $CASES --model small.en --check --json "bench-results-$HALF.json" --keep bench-transcripts | tee bench-table.txt
           { echo '```'; cat bench-table.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
+      # What the app does after Stop, on the synthetic half's call.
+      - name: Write up a recording
+        if: ${{ matrix.half == 'synthetic' }}
+        run: python3 bench/write_up.py --model small.en
+
       - name: Save the models and the AMI meeting
         if: ${{ always() && matrix.half == 'ami' && steps.models.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v6
