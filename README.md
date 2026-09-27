@@ -147,6 +147,12 @@ MIT, like the project it comes from. See [LICENSE](LICENSE).
 
 ## Changelog
 
+### v0.9.0 — Light at rest (2026-09-27)
+
+- The Vulkan build is now the recommended one, NVIDIA cards included: Minutes waiting in the background takes 58 MB instead of 237 MB with CUDA, a transcript is ready slightly sooner (42.3 s against 44.4 s for 5 minutes of call), and quality and the live preview are the same
+- Whisper runs on the dedicated GPU even when the integrated one is listed first (on an Intel Arc laptop it was four times slower)
+- `bench/idle.py` and `bench/preview.py` measure the memory at rest and the delay of the preview
+
 ### v0.8.1 — Problems you can find (2026-09-27)
 
 - Warnings go to the journal (`journalctl --user -t minutes`) instead of being lost when Minutes runs in the background

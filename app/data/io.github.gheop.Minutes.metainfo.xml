@@ -25,6 +25,11 @@
     <control>pointing</control>
   </supports>
   <releases>
+    <release version="0.9.0" date="2026-09-27">
+      <description>
+        <p>The Vulkan build is now the one to use: as fast and as accurate as CUDA, with a quarter of the memory while Minutes waits in the background. Whisper runs on the dedicated GPU rather than on integrated graphics.</p>
+      </description>
+    </release>
     <release version="0.8.1" date="2026-09-27">
       <description>
         <p>Problems met in the background are kept in the journal, and the top bar menu no longer fails when the screen locks.</p>
