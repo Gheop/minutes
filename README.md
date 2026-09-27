@@ -121,6 +121,10 @@ bench/run.py --ami --check              # transcript and speaker quality against
 bench/write_up.py                       # what happens after Stop, from the raw tracks to the meeting folder
 ```
 
+The CI builds and tests without GPU support: the CUDA toolkit is about 3 GB to install for a job that would only compile. Build with `--features cuda` before a release.
+
+Warnings from the app go to the journal: `journalctl --user -t minutes`.
+
 ## Configuration
 
 `~/.config/minutes/config.toml` (moved there from `~/.config/omarchy-meeting-recorder/` at the first start of 0.8.0):
