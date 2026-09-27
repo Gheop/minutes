@@ -10,6 +10,7 @@ several binaries, the runs alternate between them.
 
 import argparse
 import os
+import signal
 import statistics
 import subprocess
 import tempfile
@@ -42,22 +43,33 @@ def child_pid(parent, name):
     raise RuntimeError("the app did not start")
 
 
+def leftovers(home):
+    """Stops what the run left behind with its home, in case it left its group."""
+    for proc in Path("/proc").iterdir():
+        try:
+            if f"HOME={home}".encode() in (proc / "environ").read_bytes().split(b"\0"):
+                os.kill(int(proc.name), signal.SIGTERM)
+        except (OSError, ValueError):
+            pass
+
+
 def run(binary, wait):
     with tempfile.TemporaryDirectory() as home:
         env = dict(os.environ, HOME=home, XDG_CACHE_HOME=f"{home}/.cache", XDG_CONFIG_HOME=f"{home}/.config")
+        # In a process group of its own: the app starts services on its bus
+        # (portals, gvfsd) that outlive it and would pile up run after run.
         session = subprocess.Popen(["dbus-run-session", "--", binary, "--background"], env=env,
-                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                   start_new_session=True)
         pid = None
         try:
             pid = child_pid(session.pid, Path(binary).resolve().name)
             time.sleep(wait)
             return memory(pid)
         finally:
-            # The app outlives dbus-run-session: stop it first.
-            if pid:
-                os.kill(pid, 15)
-            session.terminate()
+            os.killpg(session.pid, signal.SIGTERM)
             session.wait(timeout=10)
+            leftovers(home)
 
 
 def main():
