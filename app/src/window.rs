@@ -75,6 +75,8 @@ mod imp {
         #[template_child]
         pub copy_button: TemplateChild<gtk::Button>,
         #[template_child]
+        pub recovery_banner: TemplateChild<adw::Banner>,
+        #[template_child]
         pub pages: TemplateChild<gtk::Stack>,
         #[template_child]
         pub title_row: TemplateChild<adw::EntryRow>,
@@ -130,6 +132,8 @@ mod imp {
         pub preview_file: RefCell<Option<PathBuf>>,
         /// Your microphone muted with the Mute button.
         pub muted_here: Cell<bool>,
+        /// Your microphone has sent nothing for a while during the recording.
+        pub mic_silent: Cell<bool>,
         /// What Teams showed during this recording.
         pub teams: RefCell<TeamsSeen>,
     }
@@ -217,6 +221,7 @@ impl MinutesWindow {
             action("open-folder", Self::open_folder),
             action("copy-preview", Self::copy_preview),
             action("mute-mic", Self::toggle_mute),
+            action("recover", Self::ask_recovery),
             action("open-preview", Self::open_preview),
         ]);
         self.set_busy(false);
@@ -243,6 +248,7 @@ impl MinutesWindow {
             }
         });
         self.load_meetings();
+        self.offer_recovery();
         self.watch_calls();
     }
 
@@ -372,6 +378,7 @@ impl MinutesWindow {
         for (name, enabled) in [
             ("record", !busy),
             ("new", !busy),
+            ("recover", !busy),
             ("pause", recording),
             ("stop", recording),
             ("mute-mic", recording),
@@ -405,6 +412,18 @@ impl MinutesWindow {
         if let Some(recording) = imp.recording.borrow().as_ref() {
             imp.recording_page
                 .set_title(&clock(recording.elapsed().as_secs()));
+        }
+        // A headset asleep or taken off sends nothing at all; say so while
+        // recording, since the track then only gets silence.
+        let silent = imp.recording.borrow().is_some()
+            && imp
+                .sources
+                .borrow()
+                .as_ref()
+                .is_some_and(|(mic, _)| mic.silent_for() > Duration::from_secs(5));
+        if silent != imp.mic_silent.get() {
+            imp.mic_silent.set(silent);
+            self.describe_recording();
         }
     }
 
@@ -486,8 +505,8 @@ impl MinutesWindow {
         let Some((mic, system)) = imp.sources.borrow().clone() else {
             return;
         };
-        let mut recording = imp.recording.borrow_mut();
-        let Some(recording) = recording.as_mut() else {
+        let mut guard = imp.recording.borrow_mut();
+        let Some(recording) = guard.as_mut() else {
             return;
         };
         let paused = match recording.since.take() {
@@ -513,11 +532,29 @@ impl MinutesWindow {
         } else {
             gettext("_Pause")
         });
-        imp.recording_page.set_description(Some(&if paused {
+        drop(guard);
+        self.describe_recording();
+    }
+
+    /// The line under the clock: paused, muted, or a microphone sending nothing.
+    fn describe_recording(&self) {
+        let imp = self.imp();
+        let Some(paused) = imp.recording.borrow().as_ref().map(|r| r.since.is_none()) else {
+            return;
+        };
+        let muted = imp.muted_here.get() || imp.teams.borrow().muted;
+        let text = if paused {
             gettext("Paused")
+        } else if imp.muted_here.get() {
+            gettext("Recording, your microphone muted")
+        } else if muted {
+            gettext("Recording, your microphone muted as in Teams")
+        } else if imp.mic_silent.get() {
+            gettext("Recording, but your microphone sends nothing: a headset asleep or taken off?")
         } else {
             gettext("Recording")
-        }));
+        };
+        imp.recording_page.set_description(Some(&text));
     }
 
     fn stop(&self) {
@@ -536,6 +573,125 @@ impl MinutesWindow {
         if !self.is_visible() {
             self.release_sources();
         }
+        self.write_up(recording);
+    }
+
+    /// Recordings a crash, a logout or a power cut left unfinished, oldest
+    /// first; not the one being recorded now.
+    fn unfinished(&self) -> Vec<PathBuf> {
+        let current = self
+            .imp()
+            .recording
+            .borrow()
+            .as_ref()
+            .map(|r| r.staging.clone());
+        session::unfinished(&session::staging_root())
+            .into_iter()
+            .filter(|dir| Some(dir) != current.as_ref())
+            .collect()
+    }
+
+    /// Says when a recording was left unfinished: a banner, and a
+    /// notification when Minutes waits in the background.
+    fn offer_recovery(&self) {
+        let imp = self.imp();
+        let Some(dir) = self.unfinished().into_iter().next() else {
+            imp.recovery_banner.set_revealed(false);
+            return;
+        };
+        let minutes = (session::raw_duration(&dir) + 59) / 60;
+        imp.recovery_banner.set_title(
+            &gettext("An interrupted recording was found (%s min)")
+                .replace("%s", &minutes.to_string()),
+        );
+        imp.recovery_banner.set_revealed(true);
+        if !self.is_visible()
+            && let Some(app) = self.application()
+        {
+            let notification =
+                gio::Notification::new(&gettext("An interrupted recording was found"));
+            notification.set_body(Some(&gettext(
+                "Open Minutes to write its transcript or delete it.",
+            )));
+            app.send_notification(Some("recovery"), &notification);
+        }
+    }
+
+    fn ask_recovery(&self) {
+        let Some(dir) = self.unfinished().into_iter().next() else {
+            self.offer_recovery();
+            return;
+        };
+        let note = Note::read(&dir);
+        let title = note
+            .as_ref()
+            .map_or_else(|| gettext("Recovered Recording"), |n| n.title.clone());
+        let minutes = (session::raw_duration(&dir) + 59) / 60;
+        let dialog = adw::AlertDialog::new(
+            Some(&gettext("Recover the interrupted recording?")),
+            Some(&format!("{title}, {minutes} min")),
+        );
+        dialog.add_responses(&[
+            ("later", &gettext("_Later")),
+            ("delete", &gettext("_Delete")),
+            ("recover", &gettext("_Recover")),
+        ]);
+        dialog.set_response_appearance("delete", adw::ResponseAppearance::Destructive);
+        dialog.set_response_appearance("recover", adw::ResponseAppearance::Suggested);
+        dialog.set_default_response(Some("recover"));
+        dialog.set_close_response("later");
+        let weak = self.downgrade();
+        dialog.connect_response(None, move |_, response| {
+            let Some(win) = weak.upgrade() else {
+                return;
+            };
+            match response {
+                "recover" => win.recover(dir.clone(), note.clone()),
+                "delete" => {
+                    let _ = std::fs::remove_dir_all(&dir);
+                    win.toast(&gettext("Interrupted recording deleted"));
+                    win.offer_recovery();
+                }
+                _ => {}
+            }
+        });
+        dialog.present(Some(self));
+    }
+
+    /// Writes up a recording found interrupted, as if it had just been stopped.
+    fn recover(&self, staging: PathBuf, note: Option<Note>) {
+        let imp = self.imp();
+        if imp.recording.borrow().is_some() || imp.abort.borrow().is_some() {
+            self.toast(&gettext("Finish the current recording first"));
+            return;
+        }
+        // Without its note (a crash right at the start), the folder's name
+        // is the time it started.
+        let note = note.unwrap_or_else(|| Note {
+            title: gettext("Recovered Recording"),
+            started_at: staging
+                .file_name()
+                .and_then(|n| n.to_str())
+                .and_then(|n| n.parse().ok())
+                .unwrap_or_else(|| glib::real_time() / 1_000_000),
+            format: Format::Mono,
+            language: "auto".into(),
+        });
+        imp.recovery_banner.set_revealed(false);
+        imp.content_page.set_title(&note.title);
+        imp.split_view.set_show_content(true);
+        self.write_up(Recording {
+            staging,
+            note,
+            before: Duration::ZERO,
+            since: None,
+        });
+    }
+
+    /// Saves the audio of a recording and writes its transcript, showing how
+    /// far it is: after Stop, or for a recording found interrupted.
+    fn write_up(&self, recording: Recording) {
+        let imp = self.imp();
         let abort = Abort::default();
         *imp.abort.borrow_mut() = Some(abort.clone());
         self.set_busy(true);
@@ -555,6 +711,7 @@ impl MinutesWindow {
             win.imp().drafts.borrow_mut().clear();
             win.publish_live();
             win.load_meetings();
+            win.offer_recovery();
             match result {
                 Ok(dir) => {
                     win.show_meeting(&dir);
@@ -752,20 +909,7 @@ impl MinutesWindow {
         } else {
             gettext("_Mute My Microphone")
         });
-        let paused = imp
-            .recording
-            .borrow()
-            .as_ref()
-            .is_some_and(|r| r.since.is_none());
-        if imp.recording.borrow().is_some() && !paused {
-            imp.recording_page.set_description(Some(&if !muted {
-                gettext("Recording")
-            } else if imp.muted_here.get() {
-                gettext("Recording, your microphone muted")
-            } else {
-                gettext("Recording, your microphone muted as in Teams")
-            }));
-        }
+        self.describe_recording();
         self.publish_mute(imp.muted_here.get());
     }
 
