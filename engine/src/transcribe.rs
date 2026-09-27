@@ -477,15 +477,19 @@ pub fn models_dir() -> PathBuf {
 }
 
 /// Downloads `url` to `target` through a `.part` file, reporting progress as
-/// "`label` 42%". Refuses a result smaller than `min_bytes`.
+/// "`label` 42%". The file only takes its place when its SHA-256 is `sha256`:
+/// a model changed upstream, or on the way, is never loaded.
+#[allow(clippy::too_many_arguments)]
 pub fn download(
     url: &str,
     target: &Path,
     label: &str,
     min_bytes: u64,
+    sha256: &str,
     events: &Events,
     abort: &Abort,
 ) -> Result<(), String> {
+    use sha2::Digest;
     let dir = target.parent().expect("model path has a parent");
     std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     let mut part = target.as_os_str().to_owned();
@@ -500,6 +504,7 @@ pub fn download(
     let mut reader = response.into_body().into_reader();
     let mut file = BufWriter::new(File::create(&part).map_err(|e| e.to_string())?);
     let mut buf = vec![0u8; 1 << 16];
+    let mut hash = sha2::Sha256::new();
     let (mut done, mut last_pct) = (0u64, u64::MAX);
     loop {
         if abort.load(Ordering::Relaxed) {
@@ -514,6 +519,7 @@ pub fn download(
             break;
         }
         file.write_all(&buf[..n]).map_err(|e| e.to_string())?;
+        hash.update(&buf[..n]);
         done += n as u64;
         if let Some(total) = total.filter(|t| *t > 0) {
             let pct = done * 100 / total;
@@ -530,7 +536,16 @@ pub fn download(
         let _ = std::fs::remove_file(&part);
         return Err(format!("the download of {url} was incomplete"));
     }
+    let got = hex(&hash.finalize());
+    if !got.eq_ignore_ascii_case(sha256) {
+        let _ = std::fs::remove_file(&part);
+        return Err(format!("{url} is not the expected file (SHA-256 {got}, expected {sha256}); it was not kept"));
+    }
     std::fs::rename(&part, target).map_err(|e| e.to_string())
+}
+
+fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
 // ---------------------------------------------------------------------------
@@ -1597,6 +1612,50 @@ fn usage() -> glib::ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Serves `body` once over HTTP on a local port; returns the URL.
+    fn serve_once(body: &'static [u8]) -> String {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0u8; 1024];
+            let _ = stream.read(&mut request);
+            let head = format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", body.len());
+            let _ = stream.write_all(head.as_bytes());
+            let _ = stream.write_all(body);
+        });
+        format!("http://127.0.0.1:{port}/model.bin")
+    }
+
+    #[test]
+    fn a_download_is_kept_only_with_the_expected_sha256() {
+        let dir = std::env::temp_dir().join(format!("minutes-download-{}", std::process::id()));
+        let target = dir.join("model.bin");
+        let (events, abort) = (async_channel::unbounded().0, Abort::default());
+        // SHA-256 of "abc".
+        let abc = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+        download(&serve_once(b"abc"), &target, "test", 1, abc, &events, &abort).unwrap();
+        assert_eq!(std::fs::read(&target).unwrap(), b"abc");
+        std::fs::remove_file(&target).unwrap();
+
+        let refused = download(&serve_once(b"abd"), &target, "test", 1, abc, &events, &abort);
+        assert!(refused.unwrap_err().contains("not the expected file"));
+        assert!(!target.exists(), "a refused file must not take its place");
+        assert!(!dir.join("model.bin.part").exists(), "nor stay half-way");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn sha256_is_written_as_lowercase_hex() {
+        use sha2::Digest;
+        // The SHA-256 of "abc", from FIPS 180-2.
+        assert_eq!(
+            hex(&sha2::Sha256::digest(b"abc")),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+    }
 
     #[test]
     fn whispers_subtitle_credits_are_not_speech() {
