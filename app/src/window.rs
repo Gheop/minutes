@@ -465,7 +465,7 @@ impl MinutesWindow {
         };
         let staging = session::staging_root().join(started_at.to_string());
         let (mic_raw, system_raw) = session::raw_tracks(&staging);
-        let started = std::fs::create_dir_all(&staging)
+        let started = session::private_dir(&session::staging_root(), &staging)
             .and_then(|_| mic.start_recording(&mic_raw))
             .and_then(|_| system.start_recording(&system_raw))
             .and_then(|_| note.write(&staging));
@@ -1173,7 +1173,7 @@ impl MinutesWindow {
 
     fn open_folder(&self) {
         let root = session::meetings_root();
-        let _ = std::fs::create_dir_all(&root);
+        let _ = session::private_dir(&root, &root);
         gtk::FileLauncher::new(Some(&gio::File::for_path(root))).launch(
             Some(self),
             gio::Cancellable::NONE,
