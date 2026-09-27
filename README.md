@@ -56,6 +56,12 @@ It needs whisper on a GPU (the `cuda` or `vulkan` build). On the CPU the usual m
 live_model = "small"
 ```
 
+## Nothing lost
+
+If Minutes stops while it records (a crash, a logout, a power cut), the raw audio stays in `~/.cache`, and the next start shows a banner to write its transcript or delete it; started in the background, Minutes says so in a notification.
+
+Each track keeps time on its own: when a device stops sending sound (a headset asleep or taken off), the time it missed is filled with silence, so the two sides stay in step, and the window says that your microphone sends nothing.
+
 ## Alone at your microphone
 
 Minutes tells apart the voices on each side, so that two people sharing your microphone come out as two. When you are alone at it, that can split your own voice in two as you move or as the room's sound mixes in; say so in the config and your side is one person, you:
@@ -126,6 +132,12 @@ fix = "Okafur => Okafor"
 MIT, like the project it comes from. See [LICENSE](LICENSE).
 
 ## Changelog
+
+### v0.7.0 — Nothing lost (2026-09-27)
+
+- A recording interrupted by a crash, a logout or a power cut is found at the next start, to recover or delete
+- When a headset stops sending sound, the time it missed is filled with silence, so both sides stay in step
+- The window says when your microphone sends nothing during a recording
 
 ### v0.6.1 — One voice at your microphone, names without the Participants panel (2026-09-26)
 
