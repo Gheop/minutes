@@ -421,8 +421,13 @@ mod tests {
         let (tx, rx) = async_channel::unbounded();
         let started = std::time::Instant::now();
         let preview = Preview::start(&staging, "en", tx);
-        // A second of audio every 100 ms, or every second with MINUTES_PREVIEW_SPEED=1.
+        // A tenth of a second of audio at a time, ten times faster than the
+        // call, or at its pace with MINUTES_PREVIEW_SPEED=1: the recorder
+        // writes every 40 to 60 ms (its buffer holds two or three 20 ms
+        // pieces), so whole seconds would add half a second of delay the
+        // app does not have.
         let second = 48_000 * 4;
+        let piece = second / 10;
         let pace = std::env::var("MINUTES_PREVIEW_SPEED")
             .ok()
             .and_then(|s| s.parse::<u64>().ok())
@@ -430,11 +435,19 @@ mod tests {
         let mut delays = Vec::new();
         let mut draft_ages = Vec::new();
         let mut written = 0;
+        let (mut mic_file, mut computer_file) = (
+            File::create(&mic_path).unwrap(),
+            File::create(&computer_path).unwrap(),
+        );
         while written < mic.len().max(computer.len()) {
-            written = (written + second).min(mic.len().max(computer.len()));
-            std::fs::write(&mic_path, &mic[..written.min(mic.len())]).unwrap();
-            std::fs::write(&computer_path, &computer[..written.min(computer.len())]).unwrap();
-            std::thread::sleep(std::time::Duration::from_millis(1000 / pace));
+            let before = written;
+            written = (written + piece).min(mic.len().max(computer.len()));
+            // Only what is new, as the recorder appends it.
+            for (file, track) in [(&mut mic_file, &mic), (&mut computer_file, &computer)] {
+                let part = &track[before.min(track.len())..written.min(track.len())];
+                std::io::Write::write_all(file, part).unwrap();
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100 / pace));
             while let Ok(update) = rx.try_recv() {
                 let lines = match update {
                     Update::Lines(lines) => lines,
