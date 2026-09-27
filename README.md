@@ -122,7 +122,7 @@ bench/run.py --ami --check              # transcript and speaker quality against
 
 ## Configuration
 
-`~/.config/omarchy-meeting-recorder/config.toml` (the path moves when the app is renamed):
+`~/.config/minutes/config.toml` (moved there from `~/.config/omarchy-meeting-recorder/` at the first start of 0.8.0):
 
 ```toml
 model = "large-v3-turbo"

@@ -150,10 +150,10 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: |
-            /cache/data/omarchy-meeting-recorder/models
+            /cache/data/minutes/models
             bench/.cache
           # Change the key when the bench model or the speaker model changes.
-          key: models-small.en-nemotron-353b6f8-ami-ES2004a
+          key: models-minutes-small.en-nemotron-353b6f8-ami-ES2004a
 
       - uses: actions/download-artifact@v8
         with:
@@ -178,9 +178,9 @@ jobs:
         uses: actions/cache/save@v6
         with:
           path: |
-            /cache/data/omarchy-meeting-recorder/models
+            /cache/data/minutes/models
             bench/.cache
-          key: models-small.en-nemotron-353b6f8-ami-ES2004a
+          key: models-minutes-small.en-nemotron-353b6f8-ami-ES2004a
 
       - uses: actions/upload-artifact@v7
         if: ${{ always() }}
