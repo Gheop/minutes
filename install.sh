@@ -3,7 +3,8 @@
 # and translations, and the GNOME Shell extension.
 #
 #     ./install.sh                         # build (CPU) and install
-#     ./install.sh --features cuda         # whisper on an NVIDIA GPU; CUDAARCHS=86 for an RTX 30 series
+#     ./install.sh --features vulkan       # whisper on the GPU (also the better choice on NVIDIA)
+#     ./install.sh --features cuda         # whisper on an NVIDIA GPU through CUDA; CUDAARCHS=86 for an RTX 30 series
 #     ./install.sh --autostart             # also start Minutes in the background at login, to notice calls
 #     ./install.sh --uninstall             # remove all of it; meetings and settings stay
 set -euo pipefail

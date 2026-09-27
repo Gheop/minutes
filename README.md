@@ -18,13 +18,14 @@ What Minutes changes:
 - **A GNOME Shell extension**: recording state in the top bar, controls, and a notification when a transcript is ready.
 - **Call detection**: when an app opens the microphone and plays sound for a while, Minutes offers to record. It asks; it does not start on its own, because the other people in the call have to know they are recorded.
 - **Real names for the other side**, taken from the meeting app where it exposes them (Teams first), instead of "Remote 1" and "Remote 2".
-- **GPU transcription on NVIDIA cards** through CUDA, and a glossary for names and jargon whisper gets wrong.
+- **GPU transcription** through Vulkan (any recent GPU) or CUDA (NVIDIA), and a glossary for names and jargon whisper gets wrong.
 
 ## Install
 
 ```bash
 ./install.sh                                   # for your user, in ~/.local
-CUDAARCHS=86 ./install.sh --features cuda      # whisper on an NVIDIA GPU
+./install.sh --features vulkan                 # whisper on the GPU
+CUDAARCHS=86 ./install.sh --features cuda      # whisper on an NVIDIA GPU through CUDA
 ./install.sh --autostart                       # also start in the background at login
 ./install.sh --uninstall
 ```
@@ -35,10 +36,13 @@ It installs the app with its launcher, icon and French translation, and the Shel
 
 ```bash
 cargo run --release -p minutes                                  # CPU
+cargo run --release -p minutes --features vulkan                # GPU
 CUDAARCHS=86 cargo run --release -p minutes --features cuda     # NVIDIA GPU; set your card's compute capability
 ```
 
-It needs PipeWire with `parec` and `pacat`, `ffmpeg` with libopus, GTK 4 and libadwaita 1.6 or newer, gettext, and Rust and CMake to build. The CUDA build needs the CUDA toolkit with `nvcc` on the `PATH`, recent enough for your GCC.
+It needs PipeWire with `parec` and `pacat`, `ffmpeg` with libopus, GTK 4 and libadwaita 1.6 or newer, gettext, and Rust and CMake to build. The Vulkan build needs the Vulkan headers and `glslc` (`vulkan-headers` and `glslc` on Fedora, `vulkan-headers` and `shaderc` on Arch); the CUDA build needs the CUDA toolkit with `nvcc` on the `PATH`, recent enough for your GCC.
+
+Prefer Vulkan, also on an NVIDIA card. On an RTX 2050 it transcribes as fast as CUDA (42.3 s against 44.4 s for 5 minutes of call) with the same quality, and the instance waiting in the background takes 58 MB instead of 237 MB: the CUDA libraries fill over 100 MB as soon as they are loaded. Whisper runs on the first dedicated GPU; `GGML_VK_VISIBLE_DEVICES` picks another. The first transcript after a new build takes about 10 s longer, while the driver compiles the shaders once.
 
 `minutes <meeting folder>` opens a meeting. `minutes transcribe <mic> <computer>` and `minutes transcribe-file <audio>` print a transcript as Markdown without opening a window.
 
@@ -121,7 +125,7 @@ bench/run.py --ami --check              # transcript and speaker quality against
 bench/write_up.py                       # what happens after Stop, from the raw tracks to the meeting folder
 ```
 
-The CI builds and tests without GPU support: the CUDA toolkit is about 3 GB to install for a job that would only compile. Build with `--features cuda` before a release.
+The CI builds and tests without GPU support: the CUDA toolkit is about 3 GB to install for a job that would only compile. Build with `--features vulkan` (and `--features cuda`) before a release.
 
 Warnings from the app go to the journal: `journalctl --user -t minutes`.
 
