@@ -24,6 +24,17 @@ pub fn meetings_root() -> PathBuf {
     glib::home_dir().join("Documents/Meetings")
 }
 
+/// Creates `dir` inside `root`, both readable by you alone: meetings hold the
+/// voices of people who did not choose where they are kept.
+pub fn private_dir(root: &Path, dir: &Path) -> std::io::Result<()> {
+    use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
+    std::fs::DirBuilder::new().recursive(true).mode(0o700).create(dir)?;
+    for path in [root, dir] {
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))?;
+    }
+    Ok(())
+}
+
 /// The raw files of a recording in its staging folder: (mic, computer audio).
 pub fn raw_tracks(staging: &Path) -> (PathBuf, PathBuf) {
     (staging.join("mic.raw"), staging.join("system.raw"))
@@ -106,7 +117,7 @@ pub fn meeting_dir(root: &Path, started_at: i64, title: &str) -> PathBuf {
 /// format asked for, plus the two tracks kept to transcribe again.
 /// Returns whether each of the two went well: (audio, tracks).
 pub fn save_audio(staging: &Path, out: &Path, format: Format) -> (bool, bool) {
-    let _ = std::fs::create_dir_all(out);
+    let _ = private_dir(out.parent().unwrap_or(out), out);
     let (mic, system) = raw_tracks(staging);
     (
         export_audio(&mic, &system, out, format),
@@ -260,6 +271,18 @@ mod tests {
             model: None,
             chapters: Vec::new(),
             chapters_by: None,
+        }
+    }
+
+    #[test]
+    fn meeting_folders_are_yours_alone() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = scratch("private");
+        std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let dir = root.join("202609271000 Budget");
+        private_dir(&root, &dir).unwrap();
+        for path in [&root, &dir] {
+            assert_eq!(std::fs::metadata(path).unwrap().permissions().mode() & 0o777, 0o700);
         }
     }
 
