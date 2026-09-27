@@ -28,7 +28,10 @@ pub fn meetings_root() -> PathBuf {
 /// voices of people who did not choose where they are kept.
 pub fn private_dir(root: &Path, dir: &Path) -> std::io::Result<()> {
     use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
-    std::fs::DirBuilder::new().recursive(true).mode(0o700).create(dir)?;
+    std::fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(dir)?;
     for path in [root, dir] {
         std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))?;
     }
@@ -282,7 +285,10 @@ mod tests {
         let dir = root.join("202609271000 Budget");
         private_dir(&root, &dir).unwrap();
         for path in [&root, &dir] {
-            assert_eq!(std::fs::metadata(path).unwrap().permissions().mode() & 0o777, 0o700);
+            assert_eq!(
+                std::fs::metadata(path).unwrap().permissions().mode() & 0o777,
+                0o700
+            );
         }
     }
 

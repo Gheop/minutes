@@ -539,7 +539,9 @@ pub fn download(
     let got = hex(&hash.finalize());
     if !got.eq_ignore_ascii_case(sha256) {
         let _ = std::fs::remove_file(&part);
-        return Err(format!("{url} is not the expected file (SHA-256 {got}, expected {sha256}); it was not kept"));
+        return Err(format!(
+            "{url} is not the expected file (SHA-256 {got}, expected {sha256}); it was not kept"
+        ));
     }
     std::fs::rename(&part, target).map_err(|e| e.to_string())
 }
@@ -1622,7 +1624,10 @@ mod tests {
             let (mut stream, _) = listener.accept().unwrap();
             let mut request = [0u8; 1024];
             let _ = stream.read(&mut request);
-            let head = format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", body.len());
+            let head = format!(
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                body.len()
+            );
             let _ = stream.write_all(head.as_bytes());
             let _ = stream.write_all(body);
         });
@@ -1636,11 +1641,28 @@ mod tests {
         let (events, abort) = (async_channel::unbounded().0, Abort::default());
         // SHA-256 of "abc".
         let abc = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
-        download(&serve_once(b"abc"), &target, "test", 1, abc, &events, &abort).unwrap();
+        download(
+            &serve_once(b"abc"),
+            &target,
+            "test",
+            1,
+            abc,
+            &events,
+            &abort,
+        )
+        .unwrap();
         assert_eq!(std::fs::read(&target).unwrap(), b"abc");
         std::fs::remove_file(&target).unwrap();
 
-        let refused = download(&serve_once(b"abd"), &target, "test", 1, abc, &events, &abort);
+        let refused = download(
+            &serve_once(b"abd"),
+            &target,
+            "test",
+            1,
+            abc,
+            &events,
+            &abort,
+        );
         assert!(refused.unwrap_err().contains("not the expected file"));
         assert!(!target.exists(), "a refused file must not take its place");
         assert!(!dir.join("model.bin.part").exists(), "nor stay half-way");
