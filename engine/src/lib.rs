@@ -29,7 +29,11 @@ const OLD_NAME: &str = "omarchy-meeting-recorder";
 pub fn move_old_paths() {
     let config = models::config_file();
     let models = transcribe::models_dir();
-    let dirs = [config.parent(), models.parent(), Some(&*session::staging_root())];
+    let dirs = [
+        config.parent(),
+        models.parent(),
+        Some(&*session::staging_root()),
+    ];
     for dir in dirs.into_iter().flatten() {
         let old = dir.with_file_name(OLD_NAME);
         if let Err(e) = move_into(&old, dir) {
@@ -71,13 +75,19 @@ mod tests {
         // Moved whole when there is nothing yet under the new name.
         move_into(&old, &new).unwrap();
         assert!(!old.exists());
-        assert_eq!(std::fs::read_to_string(new.join("models/a.bin")).unwrap(), "a");
+        assert_eq!(
+            std::fs::read_to_string(new.join("models/a.bin")).unwrap(),
+            "a"
+        );
         // Otherwise one entry at a time, and what is there already stays.
         std::fs::create_dir_all(&old).unwrap();
         std::fs::write(old.join("config.toml"), "old").unwrap();
         std::fs::write(old.join("models"), "clash").unwrap();
         move_into(&old, &new).unwrap();
-        assert_eq!(std::fs::read_to_string(new.join("config.toml")).unwrap(), "old");
+        assert_eq!(
+            std::fs::read_to_string(new.join("config.toml")).unwrap(),
+            "old"
+        );
         assert!(new.join("models/a.bin").exists());
         assert!(old.join("models").exists(), "kept where it was");
         // Nothing to move: nothing happens.
