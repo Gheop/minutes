@@ -187,7 +187,9 @@ fn run(
         }
         // After a pass longer than a tick, one look straight away, not a
         // burst of them to catch up.
-        next = Instant::now().checked_sub(TICK).map_or(next, |t| next.max(t));
+        next = Instant::now()
+            .checked_sub(TICK)
+            .map_or(next, |t| next.max(t));
         mic.catch_up();
         computer.catch_up();
         let heard = mic.heard().min(computer.heard());
