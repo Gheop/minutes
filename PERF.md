@@ -2,6 +2,19 @@
 
 What Minutes costs on a laptop with a Core Ultra 7 155H (22 threads) and an RTX 2050 (4 GB): the time from Stop until the transcript is ready, for a two-track call (your mic and the computer audio), the memory of the instance waiting at login, and the delay of the preview during a call.
 
+## Third round: the speakers on the GPU (2026-09-28)
+
+The Vulkan build now runs Nemotron, which finds the speakers, on the GPU too, through ONNX Runtime's WebGPU provider (Vulkan underneath, no cuDNN):
+
+| | Speakers on the CPU | On the GPU | Change |
+|---|---|---|---|
+| First 5 minutes of ES2004a after Stop (10 alternating runs) | 42.1 s ± 2.3 % | 27.8 s ± 0.4 % | −34 % |
+| Of which finding speakers | 15.6 s | 2.6 s | −83 % |
+| Whole ES2004a call (17 min 29 s, one run) | 178.0 s | 135.3 s | −24 % |
+| Instance waiting at login | 57.8 MB | 61.3 MB | +3.5 MB |
+
+The speakers found are the same: the 60 turns of the first 5 minutes match to the hundredth of a second, and every case of the bench, whole meetings included, scores exactly as before. Whisper is now 90 % of the time after Stop.
+
 ## Second round: the GPU backend (2026-09-27)
 
 Built with Vulkan instead of CUDA, on the same laptop, browsers and Teams closed:
