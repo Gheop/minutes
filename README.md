@@ -141,6 +141,8 @@ prompt = "Budget review with Maya Okafor and Tom Lindqvist: the CAPEX, the SLA, 
 fix = "Okafur => Okafor"
 ```
 
+`model` is `large-v3-turbo` unless set. `large-v3-turbo-q5_0` is the same model in 5 bits, a third of the size (574 MB): on this laptop it made a 42-minute French hearing 6 % faster with the same text, but a 17-minute English meeting 10 % slower, as whisper had to try hard passages again more often; worth it mostly when the GPU is short of memory. `large-v3-turbo-q8_0` (874 MB) lost a passage once in the tests. `tiny` to `large-v3` are the other models whisper.cpp offers.
+
 `prompt` tells whisper the names and words to expect; it only reads it for the first half minute or so, so a word it keeps getting wrong later needs a `fix` line, which replaces it in the finished transcript.
 
 ## License
@@ -148,6 +150,10 @@ fix = "Okafur => Okafor"
 MIT, like the project it comes from. See [LICENSE](LICENSE).
 
 ## Changelog
+
+### v0.10.1 — Lighter models to choose from (2026-09-28)
+
+- `model = "large-v3-turbo-q5_0"` or `"large-v3-turbo-q8_0"` picks large-v3-turbo in 5 or 8 bits (574 or 874 MB instead of 1.6 GB), checked by SHA-256 like the others; the default model does not change (see Configuration for when they help)
 
 ### v0.10.0 — Speakers on the GPU (2026-09-28)
 
