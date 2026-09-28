@@ -158,6 +158,17 @@ MIT, like the project it comes from. See [LICENSE](LICENSE).
 
 ## Changelog
 
+### v0.11.0 — Who said it (2026-09-28)
+
+- With Teams, the other side's lines are named after the person Teams shows speaking: in the preview as they come, and in the transcript for each voice found
+- Whisper is told the names of the people in the call, and the `prompt` of your settings now counts for the whole meeting instead of its first half minute: 2 work terms misspelled instead of 13 over 74 minutes of a French meeting
+- A call gone quiet, everyone muted or waiting to start, no longer stops the recording while Teams says the call goes on; each automatic stop is written to the journal with its reason
+- Cancel stops waiting at once, even while the speech model loads; the audio is kept
+- Whisper no longer loads while the speakers are found on the GPU, which hung once
+- Subtitle credits whisper makes up ("Sous-titrage Société Radio-Canada") go also when they end a real sentence
+- The top bar preview wraps its lines instead of cutting them, and joins what one person says in a row into one paragraph
+- GTK's debug messages no longer fill the journal
+
 ### v0.10.1 — Lighter models to choose from (2026-09-28)
 
 - `model = "large-v3-turbo-q5_0"` or `"large-v3-turbo-q8_0"` picks large-v3-turbo in 5 or 8 bits (574 or 874 MB instead of 1.6 GB), checked by SHA-256 like the others; the default model does not change (see Configuration for when they help)

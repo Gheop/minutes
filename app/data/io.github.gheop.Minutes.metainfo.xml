@@ -25,6 +25,11 @@
     <control>pointing</control>
   </supports>
   <releases>
+    <release version="0.11.0" date="2026-09-28">
+      <description>
+        <p>With Teams, the people speaking are named in the preview and in the transcript, and whisper is told their names. Names and words from the settings apply to the whole meeting. A quiet call is no longer taken for its end, and Cancel always works.</p>
+      </description>
+    </release>
     <release version="0.10.1" date="2026-09-28">
       <description>
         <p>Two lighter versions of the usual model can be picked in the settings file.</p>
