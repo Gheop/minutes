@@ -166,7 +166,7 @@ MIT, like the project it comes from. See [LICENSE](LICENSE).
 - Cancel stops waiting at once, even while the speech model loads; the audio is kept
 - Whisper no longer loads while the speakers are found on the GPU, which hung once
 - Subtitle credits whisper makes up ("Sous-titrage Société Radio-Canada") go also when they end a real sentence
-- The top bar preview wraps its lines instead of cutting them, and joins what one person says in a row into one paragraph
+- The top bar preview wraps its lines instead of cutting them, joins what one person says in a row into one paragraph, and opens on the newest line; it no longer throws an error while the menu is closed
 - GTK's debug messages no longer fill the journal
 
 ### v0.10.1 — Lighter models to choose from (2026-09-28)
