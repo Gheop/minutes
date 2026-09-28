@@ -51,6 +51,11 @@ class MinutesIndicator extends PanelMenu.Button {
         this._previewSection.addMenuItem(previewItem);
         this._previewSection.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
         this.menu.addMenuItem(this._previewSection);
+        // Lines that came while it was closed: open on the newest.
+        this.menu.connect('open-state-changed', (_menu, open) => {
+            if (open)
+                this._scrollToEnd();
+        });
         this._lines = [];
 
         this._pauseItem = this.menu.addAction(_('Pause'), () => this._activate('pause'));
@@ -135,11 +140,17 @@ class MinutesIndicator extends PanelMenu.Button {
         if (!this._scroll) {
             this._scroll = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
                 this._scroll = 0;
-                const adjustment = this._previewScroll.vadjustment;
-                adjustment.value = adjustment.upper;
+                this._scrollToEnd();
                 return GLib.SOURCE_REMOVE;
             });
         }
+    }
+
+    /** The newest line in sight; the list has no adjustment while the menu is closed. */
+    _scrollToEnd() {
+        const adjustment = this._previewScroll.vadjustment;
+        if (adjustment)
+            adjustment.value = adjustment.upper;
     }
 
     _setStatus(variant) {
