@@ -28,7 +28,7 @@ pub struct Model {
 /// files are taken from: fixed, so what is downloaded is what was checked.
 const REVISION: &str = "5359861c739e955e79d9a303bcbc70fb988958b1";
 
-pub const MODELS: [Model; 10] = [
+pub const MODELS: [Model; 12] = [
     Model {
         name: "tiny",
         size_mb: 75,
@@ -88,6 +88,18 @@ pub const MODELS: [Model; 10] = [
         size_mb: 1600,
         preset: DtwModelPreset::LargeV3Turbo,
         sha256: "1fc70f774d38eb169993ac391eea357ef47c88757ef72ee5943879b7e8e2bc69",
+    },
+    Model {
+        name: "large-v3-turbo-q8_0",
+        size_mb: 874,
+        preset: DtwModelPreset::LargeV3Turbo,
+        sha256: "317eb69c11673c9de1e1f0d459b253999804ec71ac4c23c17ecf5fbe24e259a1",
+    },
+    Model {
+        name: "large-v3-turbo-q5_0",
+        size_mb: 574,
+        preset: DtwModelPreset::LargeV3Turbo,
+        sha256: "394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2",
     },
 ];
 
