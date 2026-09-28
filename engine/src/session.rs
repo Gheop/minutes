@@ -364,7 +364,9 @@ pub fn name_from_teams(
             if speaker != name {
                 continue;
             }
-            let end = lines.get(n + 1).map_or(start + 30_000, |next| next.0.min(start + 30_000));
+            let end = lines
+                .get(n + 1)
+                .map_or(start + 30_000, |next| next.0.min(start + 30_000));
             let Some(heard) = crate::teams::speaker_between(speaking, *start, end) else {
                 continue;
             };
@@ -398,7 +400,9 @@ pub fn name_from_teams(
 /// "01:23" or "1:01:23" as milliseconds.
 fn clock_ms(time: &str) -> Option<i64> {
     time.split(':')
-        .try_fold(0i64, |total, part| Some(total * 60 + part.parse::<i64>().ok()?))
+        .try_fold(0i64, |total, part| {
+            Some(total * 60 + part.parse::<i64>().ok()?)
+        })
         .map(|secs| secs * 1000)
 }
 

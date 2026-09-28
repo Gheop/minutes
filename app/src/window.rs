@@ -835,8 +835,7 @@ impl MinutesWindow {
         if speaking.iter().all(|(_, names)| names.is_empty()) {
             return;
         }
-        let Some((_, mut manifest)) = meeting::open(dir)
-        else {
+        let Some((_, mut manifest)) = meeting::open(dir) else {
             return;
         };
         let transcript = dir.join("transcript.md");
@@ -936,7 +935,13 @@ impl MinutesWindow {
     }
 
     /// `line_name` from a given record of who spoke.
-    fn name_in(&self, label: &str, start_ms: i64, end_ms: i64, speaking: &teams::Speaking) -> String {
+    fn name_in(
+        &self,
+        label: &str,
+        start_ms: i64,
+        end_ms: i64,
+        speaking: &teams::Speaking,
+    ) -> String {
         if label == meeting::DEFAULT_REMOTE {
             let me = self.imp().teams.borrow().me.clone();
             let heard = teams::speaker_between(speaking, start_ms, end_ms);
@@ -1201,7 +1206,13 @@ impl MinutesWindow {
 
     /// Writes the preview into the meeting folder, to use while the final
     /// transcript is made.
-    fn save_preview(&self, out: &Path, note: &Note, lines: Vec<Segment>, speaking: &teams::Speaking) {
+    fn save_preview(
+        &self,
+        out: &Path,
+        note: &Note,
+        lines: Vec<Segment>,
+        speaking: &teams::Speaking,
+    ) {
         let imp = self.imp();
         if lines.is_empty() {
             return;

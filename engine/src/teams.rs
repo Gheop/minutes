@@ -308,10 +308,8 @@ mod tests {
     fn with_no_way_to_tell_you_apart_the_others_are_those_on_stage() {
         let mut value = call();
         value["avatar"] = serde_json::Value::Null;
-        value["tiles"] = serde_json::json!([
-            ["Théo BENOIT", "", false],
-            ["Ludovic BENOIT", "", false]
-        ]);
+        value["tiles"] =
+            serde_json::json!([["Théo BENOIT", "", false], ["Ludovic BENOIT", "", false]]);
         let snapshot = parse(&value);
         assert_eq!(snapshot.me(), None);
         assert_eq!(snapshot.others().len(), 2);
@@ -381,8 +379,14 @@ mod tests {
             (4000, names(&["Paul"])),
             (4500, names(&["Paul"])),
         ];
-        assert_eq!(speaker_between(&speaking, 0, 1500).as_deref(), Some("Jeanne"));
-        assert_eq!(speaker_between(&speaking, 3500, 4200).as_deref(), Some("Paul"));
+        assert_eq!(
+            speaker_between(&speaking, 0, 1500).as_deref(),
+            Some("Jeanne")
+        );
+        assert_eq!(
+            speaker_between(&speaking, 3500, 4200).as_deref(),
+            Some("Paul")
+        );
         // Nobody lit: nobody named.
         assert_eq!(speaker_between(&speaking, 2500, 3000), None);
         // Two people as often as each other: either may be the one.
