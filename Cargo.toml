@@ -1,9 +1,11 @@
 [workspace]
 members = ["engine", "app"]
+# A patched dependency, not part of Minutes (see vendor/README.md).
+exclude = ["vendor/whisper-rs"]
 resolver = "3"
 
 [workspace.package]
-version = "0.10.1"
+version = "0.11.0"
 edition = "2024"
 license = "MIT"
 repository = "https://github.com/Gheop/minutes"
@@ -12,3 +14,6 @@ repository = "https://github.com/Gheop/minutes"
 async-channel = "2.5.0"
 glib = "0.22.10"
 serde_json = "1.0.151"
+
+[patch.crates-io]
+whisper-rs = { path = "vendor/whisper-rs" }

@@ -1,13 +1,15 @@
 //! What Microsoft Teams shows about a call, read from its window through the
-//! Chrome DevTools Protocol: whether you are muted, your name, and who else
-//! is in the call. Only when Teams runs with a debugging port (teams-for-linux
+//! Chrome DevTools Protocol: whether you are muted, your name, who else is in
+//! the call, and who is speaking. Only when Teams runs with a debugging port (teams-for-linux
 //! with `--remote-debugging-port`) and `teams_debug_port` is set in the
 //! config: that port gives full control of Teams, so Minutes only ever reads
 //! the page, and only when asked to.
 //!
 //! The page is Teams' own and changes with its updates; everything read here
 //! comes from attributes that name what they are (`data-tid`, `data-state`),
-//! not from its styling.
+//! not from its class names, which Teams generates. The one exception is who
+//! speaks: the outline Teams draws around their tile, read as it is drawn
+//! (its opacity), which does not depend on those names.
 
 use std::net::TcpStream;
 use std::time::Duration;
@@ -19,7 +21,14 @@ const READ: &str = r#"(() => ({
   roster: [...document.querySelectorAll('[data-tid^="participantsInCall-"]')]
     .map(r => [r.getAttribute('data-tid').slice('participantsInCall-'.length), r.getAttribute('aria-label') ?? '']),
   tiles: [...document.querySelectorAll('[data-cid="calling-participant-stream"]')]
-    .map(t => [t.getAttribute('data-tid') ?? '', t.querySelector('[data-tid="voice-level-stream-outline"]')?.getAttribute('class') ?? null]),
+    .map(t => {
+      const outline = t.querySelector('[data-tid="voice-level-stream-outline"]');
+      return [
+        t.getAttribute('data-tid') ?? '',
+        t.querySelector('[data-tid="participant-info-nametag"]')?.textContent?.trim() ?? '',
+        !!outline && getComputedStyle(outline, '::after').opacity !== '0',
+      ];
+    }),
 }))()"#;
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -42,6 +51,8 @@ pub struct Snapshot {
     /// The people with a tile on the stage: everyone but you, as far as
     /// the stage has room.
     pub tiles: Vec<String>,
+    /// Those of them Teams shows speaking now.
+    pub speaking: Vec<String>,
 }
 
 impl Snapshot {
@@ -152,19 +163,60 @@ pub fn parse(value: &serde_json::Value) -> Snapshot {
             })
         })
         .collect();
-    let tiles = value["tiles"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter_map(|t| t[0].as_str().map(clean_name).filter(|n| !n.is_empty()))
-        .collect();
+    // A tile's name is on its name tag; its id is an address in some
+    // organizations. Screen shared by someone is a second tile of theirs.
+    let (mut tiles, mut speaking) = (Vec::new(), Vec::new());
+    for tile in value["tiles"].as_array().into_iter().flatten() {
+        let tag = tile[1].as_str().unwrap_or("");
+        let id = tile[0].as_str().unwrap_or("");
+        let name = clean_name(if tag.trim().is_empty() { id } else { tag });
+        if name.is_empty() {
+            continue;
+        }
+        if tile[2] == true && !speaking.contains(&name) {
+            speaking.push(name.clone());
+        }
+        if !tiles.contains(&name) {
+            tiles.push(name);
+        }
+    }
     Snapshot {
         in_call: state.is_some(),
         muted: state == Some("mic-off"),
         me: value["avatar"].as_str().and_then(name_in_avatar),
         participants,
         tiles,
+        speaking,
     }
+}
+
+/// Who Teams showed speaking during a recording: (milliseconds into the
+/// recording, names), a sample every half second or so.
+pub type Speaking = [(i64, Vec<String>)];
+
+/// The one person Teams showed speaking during most of `start_ms..end_ms`:
+/// lit in at least half of the samples where someone was. The outline lags
+/// the voice a little, so the end is stretched by half a second.
+pub fn speaker_between(speaking: &Speaking, start_ms: i64, end_ms: i64) -> Option<String> {
+    let mut counts: Vec<(&str, usize)> = Vec::new();
+    let mut spoken = 0;
+    for (_, names) in speaking
+        .iter()
+        .filter(|(at, _)| (start_ms..=end_ms + 500).contains(at))
+    {
+        if names.is_empty() {
+            continue;
+        }
+        spoken += 1;
+        for name in names {
+            match counts.iter_mut().find(|(n, _)| n == name) {
+                Some((_, count)) => *count += 1,
+                None => counts.push((name, 1)),
+            }
+        }
+    }
+    let (name, count) = counts.into_iter().max_by_key(|(_, count)| *count)?;
+    (count * 2 >= spoken).then(|| name.to_owned())
 }
 
 /// A name as the people in the call chose it, made safe to write into a
@@ -217,7 +269,7 @@ mod tests {
                 ["Ludovic BENOIT", "Ludovic BENOIT, Organisateur, Micro désactivé"],
                 ["Théo BENOIT", "Théo BENOIT Contact externe non reconnu, Micro activé"],
             ],
-            "tiles": [["Théo BENOIT", "___1884sgo f9pox2d f11ef69 f1ac6l4y fs357bs"]],
+            "tiles": [["Théo BENOIT", "Théo BENOIT", true]],
         })
     }
 
@@ -256,7 +308,8 @@ mod tests {
     fn with_no_way_to_tell_you_apart_the_others_are_those_on_stage() {
         let mut value = call();
         value["avatar"] = serde_json::Value::Null;
-        value["tiles"] = serde_json::json!([["Théo BENOIT", null], ["Ludovic BENOIT", null]]);
+        value["tiles"] =
+            serde_json::json!([["Théo BENOIT", "", false], ["Ludovic BENOIT", "", false]]);
         let snapshot = parse(&value);
         assert_eq!(snapshot.me(), None);
         assert_eq!(snapshot.others().len(), 2);
@@ -289,6 +342,64 @@ mod tests {
             Some(("00:05", name.as_str(), "Bonjour."))
         );
         assert_eq!(clean_name(&"x".repeat(200)).len(), 80);
+    }
+
+    #[test]
+    fn tiles_are_named_by_their_name_tag_and_tell_who_speaks() {
+        // As read on 2026-09-28: tiles known by address, a room system
+        // sharing its screen (a second tile, without an outline), and only
+        // the room speaking.
+        let snapshot = parse(&serde_json::json!({
+            "me": "mic-off",
+            "avatar": null,
+            "roster": [],
+            "tiles": [
+                ["room-4b@example.org", "Room 4B", false],
+                ["room-4b@example.org", "Room 4B", true],
+                ["jeanne.martin@example.org", "Jeanne Martin", false],
+                ["noname@example.org", "", false],
+            ],
+        }));
+        assert_eq!(
+            snapshot.tiles,
+            ["Room 4B", "Jeanne Martin", "noname@example.org"]
+        );
+        assert_eq!(snapshot.speaking, ["Room 4B"]);
+    }
+
+    #[test]
+    fn the_speaker_of_a_stretch_is_the_one_lit_most_of_it() {
+        let names = |n: &[&str]| n.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        let speaking = vec![
+            (0, names(&[])),
+            (500, names(&["Jeanne"])),
+            (1000, names(&["Jeanne"])),
+            (1500, names(&["Jeanne", "Paul"])),
+            (2000, names(&["Paul"])),
+            (4000, names(&["Paul"])),
+            (4500, names(&["Paul"])),
+        ];
+        assert_eq!(
+            speaker_between(&speaking, 0, 1500).as_deref(),
+            Some("Jeanne")
+        );
+        assert_eq!(
+            speaker_between(&speaking, 3500, 4200).as_deref(),
+            Some("Paul")
+        );
+        // Nobody lit: nobody named.
+        assert_eq!(speaker_between(&speaking, 2500, 3000), None);
+        // Two people as often as each other: either may be the one.
+        assert!(speaker_between(&speaking, 1000, 2000).is_some());
+        // Three people, none lit half the time: nobody named.
+        let crowd = vec![
+            (0, names(&["A"])),
+            (500, names(&["B"])),
+            (1000, names(&["C"])),
+            (1500, names(&["A"])),
+        ];
+        assert_eq!(speaker_between(&crowd, 0, 1500).as_deref(), Some("A"));
+        assert_eq!(speaker_between(&crowd, 0, 500), None);
     }
 
     #[test]

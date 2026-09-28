@@ -38,6 +38,13 @@ fn locale_dir() -> PathBuf {
 /// started with the session has its output thrown away.
 fn log_to_journal() {
     glib::log_set_writer_func(|level, fields| {
+        // Like GLib's own writer: debug and info only with G_MESSAGES_DEBUG,
+        // or GTK fills the journal with its debug lines.
+        if matches!(level, glib::LogLevel::Debug | glib::LogLevel::Info)
+            && std::env::var_os("G_MESSAGES_DEBUG").is_none()
+        {
+            return glib::LogWriterOutput::Handled;
+        }
         if !std::io::stderr().is_terminal()
             && glib::log_writer_journald(level, fields) == glib::LogWriterOutput::Handled
         {

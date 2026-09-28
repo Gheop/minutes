@@ -42,9 +42,28 @@ export function describe(status, now) {
  * The preview lines to show in the menu, newest last: the last `max` of the
  * (time, speaker, text) lines Minutes publishes, with a heading for each.
  */
-export function previewLines(lines, max = 12) {
-    return (lines ?? []).slice(-max).map(([time, speaker, text]) => ({
-        heading: `${speaker} · ${time}`,
-        text,
-    }));
+/** Seconds from a `clock()` time: "05:13" or "1:05:13". */
+function seconds(time) {
+    return String(time).split(':').reduce((total, part) => total * 60 + Number(part), 0);
+}
+
+/**
+ * The newest paragraphs of the preview. Minutes cuts long speech into pieces
+ * of a few seconds; the pieces one person says in a row, each less than
+ * `gap` seconds after the one before, read as one paragraph.
+ */
+export function previewLines(lines, max = 12, gap = 30) {
+    const paragraphs = [];
+    let last = null;
+    for (const [time, speaker, text] of lines ?? []) {
+        const at = seconds(time);
+        if (last && last.speaker === speaker && at - last.at <= gap) {
+            last.text += ` ${text}`;
+            last.at = at;
+            continue;
+        }
+        last = {speaker, at, heading: `${speaker} · ${time}`, text};
+        paragraphs.push(last);
+    }
+    return paragraphs.slice(-max).map(({heading, text}) => ({heading, text}));
 }

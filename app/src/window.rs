@@ -28,6 +28,9 @@ pub struct Recording {
     before: Duration,
     /// When the current stretch started; None while paused.
     since: Option<Instant>,
+    /// Who Teams showed speaking, on the recording's own clock, to name the
+    /// other side's lines.
+    speaking: Vec<(i64, Vec<String>)>,
 }
 
 /// What Teams showed during a recording.
@@ -39,6 +42,8 @@ pub struct TeamsSeen {
     pub me: Option<String>,
     /// Everyone else seen in the call.
     pub others: BTreeSet<String>,
+    /// Teams said at its last read that you are in a call.
+    pub in_call: bool,
 }
 
 impl TeamsSeen {
@@ -118,6 +123,9 @@ mod imp {
         pub sources: RefCell<Option<(Source, Source)>>,
         pub recording: RefCell<Option<Recording>>,
         pub abort: RefCell<Option<Abort>>,
+        /// Where the transcript's progress arrives; Cancel ends the wait
+        /// through it, even when whisper is stuck where it cannot see `abort`.
+        pub progress_events: RefCell<Option<async_channel::Sender<Event>>>,
         /// The transcript on screen, for Copy.
         pub markdown: RefCell<String>,
         /// Calls seen in the PipeWire graph, to offer recording them.
@@ -289,14 +297,16 @@ impl MinutesWindow {
         });
     }
 
-    /// The call being recorded has ended: stop, and say so.
-    fn call_over(&self, name: &str) {
+    /// The call being recorded has ended: stop, and say so. `why` goes to
+    /// the journal, so a recording stopped too soon can be explained.
+    fn call_over(&self, name: &str, why: &str) {
         let Some(app) = self.application() else {
             return;
         };
         if self.imp().recording.borrow().is_none() {
             return;
         }
+        minutes_engine::warn(format!("recording stopped on its own: {why}"));
         self.stop();
         let notification = gio::Notification::new(&gettext("Recording stopped"));
         notification.set_body(Some(
@@ -320,7 +330,16 @@ impl MinutesWindow {
                 notification.add_button(&gettext("Record"), "app.record");
                 app.send_notification(Some("call"), &notification);
             }
-            Change::Ended(_, name) if recording => self.call_over(&name),
+            // A call waiting in silence, or muted, can close its audio for a
+            // while: when Teams says the call goes on, it goes on.
+            Change::Ended(_, name) if recording && self.imp().teams.borrow().in_call => {
+                minutes_engine::warn(format!(
+                    "{name} closed its audio, but Teams is still in the call: recording goes on"
+                ));
+            }
+            Change::Ended(_, name) if recording => {
+                self.call_over(&name, &format!("{name} had no call audio for 15 s"))
+            }
             Change::Ended(..) => app.withdraw_notification("call"),
             Change::Started(..) => {}
         }
@@ -464,6 +483,7 @@ impl MinutesWindow {
             started_at,
             format: Format::Mono,
             language: self.language().to_owned(),
+            names: Vec::new(),
         };
         let staging = session::staging_root().join(started_at.to_string());
         let (mic_raw, system_raw) = session::raw_tracks(&staging);
@@ -485,12 +505,15 @@ impl MinutesWindow {
             ..TeamsSeen::default()
         };
         self.apply_mute();
+        // The last call's names are not this one's.
+        minutes_engine::glossary::set_names(&[]);
         self.start_preview(&staging, &note.language);
         *imp.recording.borrow_mut() = Some(Recording {
             staging,
             note,
             before: Duration::ZERO,
             since: Some(Instant::now()),
+            speaking: Vec::new(),
         });
         self.publish("recording", glib::real_time() / 1_000_000, 0.0);
         self.watch_teams();
@@ -678,6 +701,7 @@ impl MinutesWindow {
                 .unwrap_or_else(|| glib::real_time() / 1_000_000),
             format: Format::Mono,
             language: "auto".into(),
+            names: Vec::new(),
         });
         imp.recovery_banner.set_revealed(false);
         imp.content_page.set_title(&note.title);
@@ -687,6 +711,8 @@ impl MinutesWindow {
             note,
             before: Duration::ZERO,
             since: None,
+            // Found after a crash: who spoke then is not known.
+            speaking: Vec::new(),
         });
     }
 
@@ -737,7 +763,12 @@ impl MinutesWindow {
     /// Saves the audio of a stopped recording into its meeting folder and
     /// transcribes it there. Returns the folder.
     async fn finish(&self, recording: Recording, abort: Abort) -> Result<PathBuf, String> {
-        let Recording { staging, note, .. } = recording;
+        let Recording {
+            staging,
+            note,
+            speaking,
+            ..
+        } = recording;
         let out = session::meeting_dir(&session::meetings_root(), note.started_at, &note.title);
         // The preview's model has to leave the GPU before the final one comes.
         let preview = self.imp().preview.borrow_mut().take();
@@ -747,7 +778,7 @@ impl MinutesWindow {
         if let Err(e) = session::private_dir(&session::meetings_root(), &out) {
             minutes_engine::warn(format!("could not make {}: {e}", out.display()));
         }
-        self.save_preview(&out, &note, lines);
+        self.save_preview(&out, &note, lines, &speaking);
         let speakers = {
             let seen = self.imp().teams.borrow();
             [
@@ -760,9 +791,11 @@ impl MinutesWindow {
 
         let (events_tx, events_rx) = async_channel::unbounded::<Event>();
         let (done_tx, done_rx) = async_channel::bounded(1);
-        let dir = out.clone();
+        *self.imp().progress_events.borrow_mut() = Some(events_tx.clone());
+        let (dir, thread_abort) = (out.clone(), abort.clone());
         std::thread::spawn(move || {
-            let result = session::write_up(&staging, &dir, &note, speakers, &events_tx, &abort);
+            let result =
+                session::write_up(&staging, &dir, &note, speakers, &events_tx, &thread_abort);
             let _ = done_tx.send_blocking(result);
             let _ = events_tx.send_blocking(Event::Finished);
         });
@@ -779,16 +812,55 @@ impl MinutesWindow {
                 Event::Finished => break,
             }
         }
+        imp.progress_events.borrow_mut().take();
+        // Cancelled while whisper was out of reach (loading the model, say):
+        // the thread is left to finish or not on its own, the audio is kept.
+        if abort.load(Ordering::Relaxed) && done_rx.is_empty() {
+            minutes_engine::warn("transcript cancelled before whisper stopped; left running");
+            return Err(CANCELLED.into());
+        }
         let result = done_rx
             .recv()
             .await
             .unwrap_or_else(|_| Err("the transcription stopped unexpectedly".into()));
+        if result.is_ok() {
+            self.name_from_teams(&out, &speaking);
+        }
         result.map(|()| out)
     }
 
+    /// Gives the other side's voices in the finished transcript the names of
+    /// the people Teams showed speaking during their lines.
+    fn name_from_teams(&self, dir: &Path, speaking: &teams::Speaking) {
+        if speaking.iter().all(|(_, names)| names.is_empty()) {
+            return;
+        }
+        let Some((_, mut manifest)) = meeting::open(dir) else {
+            return;
+        };
+        let transcript = dir.join("transcript.md");
+        let Ok(markdown) = std::fs::read_to_string(&transcript) else {
+            return;
+        };
+        let me = self.imp().teams.borrow().me.clone();
+        let named = session::name_from_teams(&mut manifest, &markdown, speaking, me.as_deref());
+        if named == markdown {
+            return;
+        }
+        if let Err(e) = std::fs::write(&transcript, named)
+            .and_then(|()| meeting::write(dir, &manifest).map(|_| ()))
+        {
+            minutes_engine::warn(format!("could not name the speakers from Teams: {e}"));
+        }
+    }
+
     fn cancel(&self) {
-        if let Some(abort) = self.imp().abort.borrow().as_ref() {
+        let imp = self.imp();
+        if let Some(abort) = imp.abort.borrow().as_ref() {
             abort.store(true, Ordering::Relaxed);
+        }
+        if let Some(events) = imp.progress_events.borrow().as_ref() {
+            let _ = events.try_send(Event::Finished);
         }
     }
 
@@ -853,6 +925,59 @@ impl MinutesWindow {
     }
 
     /// A side's label as the preview shows it: the names Teams gave, when it did.
+    /// The name of a line of the preview said from `start_ms` to `end_ms`:
+    /// on the other side, the person Teams showed speaking meanwhile, when
+    /// there was one; else as `side_name`.
+    fn line_name(&self, label: &str, start_ms: i64, end_ms: i64) -> String {
+        let recording = self.imp().recording.borrow();
+        let speaking = recording.as_ref().map_or(&[][..], |r| &r.speaking[..]);
+        self.name_in(label, start_ms, end_ms, speaking)
+    }
+
+    /// `line_name` from a given record of who spoke.
+    fn name_in(
+        &self,
+        label: &str,
+        start_ms: i64,
+        end_ms: i64,
+        speaking: &teams::Speaking,
+    ) -> String {
+        if label == meeting::DEFAULT_REMOTE {
+            let me = self.imp().teams.borrow().me.clone();
+            let heard = teams::speaker_between(speaking, start_ms, end_ms);
+            if let Some(name) = heard.filter(|n| Some(n) != me.as_ref()) {
+                return name;
+            }
+        }
+        self.side_name(label)
+    }
+
+    /// Keeps the names seen in Teams with the recording, so whisper expects
+    /// them, now for the preview and later for the transcript, also after a
+    /// crash.
+    fn note_names(&self) {
+        let names: Vec<String> = {
+            let seen = self.imp().teams.borrow();
+            seen.me.iter().chain(&seen.others).cloned().collect()
+        };
+        minutes_engine::glossary::set_names(&names);
+        if let Some(recording) = self.imp().recording.borrow_mut().as_mut() {
+            recording.note.names = names;
+            if let Err(e) = recording.note.write(&recording.staging) {
+                minutes_engine::warn(format!("could not keep the names seen in Teams: {e}"));
+            }
+        }
+    }
+
+    /// Where the recording is now, in milliseconds of audio.
+    fn heard_ms(&self) -> i64 {
+        self.imp()
+            .recording
+            .borrow()
+            .as_ref()
+            .map_or(0, |r| r.elapsed().as_millis() as i64)
+    }
+
     fn side_name(&self, label: &str) -> String {
         let seen = self.imp().teams.borrow();
         match label {
@@ -928,11 +1053,20 @@ impl MinutesWindow {
                     Some(_) if was_in_call => out += 1,
                     _ => {}
                 }
+                if let Some(s) = &snapshot {
+                    win.imp().teams.borrow_mut().in_call = s.in_call;
+                }
                 if out >= 3 {
-                    win.call_over("Teams");
+                    win.call_over("Teams", "Teams showed no call three reads in a row");
                     return;
                 }
                 if let Some(snapshot) = snapshot.filter(|s| s.in_call) {
+                    if let Some(recording) = win.imp().recording.borrow_mut().as_mut()
+                        && recording.since.is_some()
+                    {
+                        let at = recording.elapsed().as_millis() as i64;
+                        recording.speaking.push((at, snapshot.speaking.clone()));
+                    }
                     let changed = {
                         let mut seen = win.imp().teams.borrow_mut();
                         let before = (seen.muted, seen.me.clone(), seen.others.len());
@@ -950,6 +1084,7 @@ impl MinutesWindow {
                     if changed {
                         win.apply_mute();
                         win.publish_live();
+                        win.note_names();
                     }
                 }
                 drop(win);
@@ -998,7 +1133,7 @@ impl MinutesWindow {
             let time = clock((line.start_ms / 1000).max(0) as u64);
             imp.live_list.append(&transcript_row(
                 &time,
-                &self.side_name(&line.speaker),
+                &self.line_name(&line.speaker, line.start_ms, line.end_ms),
                 &line.text,
             ));
         }
@@ -1020,7 +1155,8 @@ impl MinutesWindow {
         if !text.is_empty() {
             imp.live_group.set_visible(true);
             let time = clock((start_ms / 1000).max(0) as u64);
-            let row = transcript_row(&time, &self.side_name(speaker), &format!("{text} …"));
+            let name = self.line_name(speaker, start_ms, self.heard_ms());
+            let row = transcript_row(&time, &name, &format!("{text} …"));
             row.add_css_class("dimmed");
             imp.live_list.append(&row);
             drafts.push((speaker, start_ms, text, row));
@@ -1053,7 +1189,7 @@ impl MinutesWindow {
             .map(|l| {
                 (
                     clock((l.start_ms / 1000).max(0) as u64),
-                    self.side_name(&l.speaker),
+                    self.line_name(&l.speaker, l.start_ms, l.end_ms),
                     l.text.clone(),
                 )
             })
@@ -1061,7 +1197,7 @@ impl MinutesWindow {
         for (speaker, start_ms, text, _) in self.imp().drafts.borrow().iter() {
             lines.push((
                 clock((start_ms / 1000).max(0) as u64),
-                self.side_name(speaker),
+                self.line_name(speaker, *start_ms, self.heard_ms()),
                 format!("{text} …"),
             ));
         }
@@ -1070,7 +1206,13 @@ impl MinutesWindow {
 
     /// Writes the preview into the meeting folder, to use while the final
     /// transcript is made.
-    fn save_preview(&self, out: &Path, note: &Note, lines: Vec<Segment>) {
+    fn save_preview(
+        &self,
+        out: &Path,
+        note: &Note,
+        lines: Vec<Segment>,
+        speaking: &teams::Speaking,
+    ) {
         let imp = self.imp();
         if lines.is_empty() {
             return;
@@ -1083,7 +1225,7 @@ impl MinutesWindow {
         let lines = lines
             .into_iter()
             .map(|l| Segment {
-                speaker: self.side_name(&l.speaker),
+                speaker: self.name_in(&l.speaker, l.start_ms, l.end_ms, speaking),
                 ..l
             })
             .collect();
