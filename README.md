@@ -151,6 +151,10 @@ MIT, like the project it comes from. See [LICENSE](LICENSE).
 
 ## Changelog
 
+### v0.10.1 — Lighter models to choose from (2026-09-28)
+
+- `model = "large-v3-turbo-q5_0"` or `"large-v3-turbo-q8_0"` picks large-v3-turbo in 5 or 8 bits (574 or 874 MB instead of 1.6 GB), checked by SHA-256 like the others; the default model does not change (see Configuration for when they help)
+
 ### v0.10.0 — Speakers on the GPU (2026-09-28)
 
 - With the Vulkan build, the speakers are found on the GPU, through ONNX Runtime's WebGPU: 2.6 s instead of 15.6 s for 5 minutes of call, so the transcript is ready in 27.8 s instead of 42.1 s, with exactly the same speakers
