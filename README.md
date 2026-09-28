@@ -92,13 +92,20 @@ With Teams, Minutes can follow your mute button there too. Muting yourself in Te
 teams_debug_port = 9222
 ```
 
-Twice a second while recording, Minutes then reads the Teams window: whether you are muted there, your name, and who else is in the call. It only reads the page, never clicks or sends anything, and only when this is set, since that port gives full control of Teams. While you are muted in Teams your side is recorded as silence; and when a single other person is in the call, the preview and the transcript use their name and yours instead of "Others" and "You".
+Twice a second while recording, Minutes then reads the Teams window: whether you are muted there, your name, who else is in the call, and whose tile Teams lights up as they speak. It only reads the page, never clicks or sends anything, and only when this is set, since that port gives full control of Teams. With it:
+
+- while you are muted in Teams your side is recorded as silence;
+- each line of the preview from the other side takes the name of the person Teams showed speaking as it was said;
+- in the transcript, each voice found on the other side takes the name Teams showed during most of its lines (three at least, each name once), and your side takes yours;
+- whisper is told the names of the people in the call, so it spells them as Teams does.
+
+People sharing one room system show as that one tile: the transcript then tells their voices apart without naming them.
 
 A Bluetooth headset such as AirPods only gives its microphone once an app switches it to its headset profile, as Teams does when a call starts; outside a call Minutes hears nothing from it, and does not switch it itself, since that would bring your music down to phone quality.
 
 ## Call detection
 
-While Minutes runs, it looks at the PipeWire graph every three seconds. An app that both takes the microphone and plays sound for ten seconds is in a call: Teams, Meet in a browser, Zoom, without Minutes knowing any of them. A video (sound out only) or a voice memo (microphone only) is not. Minutes then shows a notification with a Record button, and reminds you to tell the others first; it never starts on its own. When the call it records ends, it stops and says so: after about fifteen seconds without the call's sound, or within two seconds of leaving a Teams call when it reads Teams (`teams_debug_port`).
+While Minutes runs, it looks at the PipeWire graph every three seconds. An app that both takes the microphone and plays sound for ten seconds is in a call: Teams, Meet in a browser, Zoom, without Minutes knowing any of them. A video (sound out only) or a voice memo (microphone only) is not. Minutes then shows a notification with a Record button, and reminds you to tell the others first; it never starts on its own. When the call it records ends, it stops and says so: after about fifteen seconds without the call's sound, or within two seconds of leaving a Teams call when it reads Teams (`teams_debug_port`). While Teams says you are still in the call, a call gone quiet (everyone muted, people waiting to start) is not taken for its end. Each stop Minutes decides on its own is written to the journal with its reason.
 
 ## GNOME Shell extension
 
@@ -143,7 +150,7 @@ fix = "Okafur => Okafor"
 
 `model` is `large-v3-turbo` unless set. `large-v3-turbo-q5_0` is the same model in 5 bits, a third of the size (574 MB): on this laptop it made a 42-minute French hearing 6 % faster with the same text, but a 17-minute English meeting 10 % slower, as whisper had to try hard passages again more often; worth it mostly when the GPU is short of memory. `large-v3-turbo-q8_0` (874 MB) lost a passage once in the tests. `tiny` to `large-v3` are the other models whisper.cpp offers.
 
-`prompt` tells whisper the names and words to expect; it only reads it for the first half minute or so, so a word it keeps getting wrong later needs a `fix` line, which replaces it in the finished transcript.
+`prompt` tells whisper the names and words to expect, for the whole recording: on a French meeting it took misspelled work terms from 13 to 2 in 74 minutes. A word it still gets wrong needs a `fix` line, which replaces it in the finished transcript. Both stay on your computer, in your config.
 
 ## License
 
