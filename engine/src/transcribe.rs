@@ -904,7 +904,7 @@ pub fn transcribe(
     }
     emit(events, Event::Progress(1.0));
     Ok(Transcript {
-        segments: crate::glossary::apply(drop_hallucinations(interleave(segments))),
+        segments: crate::glossary::apply(interleave(drop_hallucinations(segments))),
         language: if language == "auto" {
             detected.unwrap_or_else(|| "unknown".into())
         } else {
@@ -914,11 +914,8 @@ pub fn transcribe(
     })
 }
 
-/// The sentences of both sides in the order they were said, joined into
-/// paragraphs per speaker. A sentence of yours that repeats what the other
-/// side said at the same moment is their voice leaking into your mic, and goes.
 /// Lines whisper writes when there is nothing to hear, from the subtitles it
-/// learnt on: a line that says only one of these was not said.
+/// learnt on: a sentence that says only one of these was not said.
 const HALLUCINATIONS: [&str; 12] = [
     "sous-titrage société radio-canada",
     "sous-titrage st' 501",
@@ -943,13 +940,45 @@ pub(crate) fn is_hallucination(text: &str) -> bool {
     !text.is_empty() && HALLUCINATIONS.iter().any(|h| text == *h)
 }
 
+/// The segments without the sentences whisper made up (see `HALLUCINATIONS`),
+/// also where one ends a segment of real speech; a segment left empty goes.
 fn drop_hallucinations(segments: Vec<Segment>) -> Vec<Segment> {
     segments
         .into_iter()
-        .filter(|s| !is_hallucination(&s.text))
+        .filter_map(|s| {
+            let text = without_hallucinations(&s.text);
+            (!text.is_empty()).then_some(Segment { text, ..s })
+        })
         .collect()
 }
 
+fn without_hallucinations(text: &str) -> String {
+    // Sentences with their end marks: "Oui. Sous-titrage… Radio-Canada".
+    let mut sentences = Vec::new();
+    let mut start = 0;
+    for (i, c) in text.char_indices() {
+        if matches!(c, '.' | '!' | '?' | '…') {
+            let end = i + c.len_utf8();
+            let rest = &text[end..];
+            // A sentence ends where a space or the end follows the mark.
+            if rest.is_empty() || rest.starts_with(char::is_whitespace) {
+                sentences.push(&text[start..end]);
+                start = end;
+            }
+        }
+    }
+    sentences.push(&text[start..]);
+    sentences
+        .into_iter()
+        .map(str::trim)
+        .filter(|sentence| !sentence.is_empty() && !is_hallucination(sentence))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// The sentences of both sides in the order they were said, joined into
+/// paragraphs per speaker. A sentence of yours that repeats what the other
+/// side said at the same moment is their voice leaking into your mic, and goes.
 fn interleave(mut sentences: Vec<Segment>) -> Vec<Segment> {
     let is_local = |speaker: &str| {
         crate::meeting::side_of(speaker)
@@ -1912,6 +1941,29 @@ mod tests {
             "Merci d'avoir regardé le devis, on en reparle demain."
         ));
         assert!(!is_hallucination("Oui."));
+    }
+
+    #[test]
+    fn subtitle_credits_go_also_at_the_end_of_real_speech() {
+        let segment = |text: &str| Segment {
+            start_ms: 0,
+            end_ms: 1000,
+            speaker: "Remote".into(),
+            text: text.into(),
+        };
+        let kept = drop_hallucinations(vec![
+            segment("Bonne soirée à tous. Sous-titrage Société Radio-Canada"),
+            segment("Merci d'avoir regardé."),
+            segment("Le budget 2.5 est voté. Merci d'avoir regardé le devis !"),
+        ]);
+        let texts: Vec<&str> = kept.iter().map(|s| s.text.as_str()).collect();
+        assert_eq!(
+            texts,
+            [
+                "Bonne soirée à tous.",
+                "Le budget 2.5 est voté. Merci d'avoir regardé le devis !"
+            ]
+        );
     }
 
     #[test]
