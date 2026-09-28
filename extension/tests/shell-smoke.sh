@@ -27,15 +27,24 @@ dbus-run-session -- bash -c '
     for _ in $(seq 1 60); do
         gdbus call --session --dest org.gnome.Shell --object-path /org/gnome/Shell \
             --method org.gnome.Shell.Extensions.GetExtensionInfo '"$uuid"' >"$XDG_RUNTIME_DIR/info" 2>/dev/null \
-            && grep -q "state" "$XDG_RUNTIME_DIR/info" && break
+            && grep -qE "'"'"'state'"'"': <1(\.0)?>" "$XDG_RUNTIME_DIR/info" && break
+        # Right as the shell starts, the state can read as an error for a
+        # moment: only one that lasts counts.
         sleep 1
     done
     info=$(cat "$XDG_RUNTIME_DIR/info" 2>/dev/null || true)
+    # What the extension does just after it starts (idle callbacks) too.
+    sleep 3
     kill "$shell" 2>/dev/null || true
     wait "$shell" 2>/dev/null || true
     state=$(grep -o "'"'"'state'"'"': <[0-9.]*>" <<<"$info" | grep -o "[0-9.]*" || true)
     error=$(grep -o "'"'"'error'"'"': <[^>]*>" <<<"$info" || true)
-    if [ "$state" = "1.0" ] || [ "$state" = "1" ]; then
+    errors=$(grep -A3 "JS ERROR" "$XDG_RUNTIME_DIR/shell.log" | grep -F "$1" || true)
+    if [ -n "$errors" ]; then
+        echo "$1: active, but with JavaScript errors:" >&2
+        grep -B1 -A3 "JS ERROR" "$XDG_RUNTIME_DIR/shell.log" | head -20 >&2
+        exit 1
+    elif [ "$state" = "1.0" ] || [ "$state" = "1" ]; then
         echo "$1: active in GNOME Shell $(gnome-shell --version | cut -d" " -f3)"
     else
         echo "$1: not active (state ${state:-unknown}) $error" >&2
