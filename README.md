@@ -158,6 +158,10 @@ MIT, like the project it comes from. See [LICENSE](LICENSE).
 
 ## Changelog
 
+### v0.11.1 — No meeting written over (2026-09-28)
+
+- Two recordings started in the same minute with the same title each keep their folder: the second one is named "… 2" instead of replacing the first
+
 ### v0.11.0 — Who said it (2026-09-28)
 
 - With Teams, the other side's lines are named after the person Teams shows speaking: in the preview as they come, and in the transcript for each voice found
