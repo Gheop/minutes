@@ -25,6 +25,11 @@
     <control>pointing</control>
   </supports>
   <releases>
+    <release version="0.10.0" date="2026-09-28">
+      <description>
+        <p>With the Vulkan build, the speakers are found on the GPU as well: a transcript is ready about a third sooner, with the same speakers.</p>
+      </description>
+    </release>
     <release version="0.9.1" date="2026-09-27">
       <description>
         <p>The live preview falls behind less after a slow passage.</p>
