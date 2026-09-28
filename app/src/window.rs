@@ -28,6 +28,9 @@ pub struct Recording {
     before: Duration,
     /// When the current stretch started; None while paused.
     since: Option<Instant>,
+    /// Who Teams showed speaking, on the recording's own clock, to name the
+    /// other side's lines.
+    speaking: Vec<(i64, Vec<String>)>,
 }
 
 /// What Teams showed during a recording.
@@ -507,6 +510,7 @@ impl MinutesWindow {
             note,
             before: Duration::ZERO,
             since: Some(Instant::now()),
+            speaking: Vec::new(),
         });
         self.publish("recording", glib::real_time() / 1_000_000, 0.0);
         self.watch_teams();
@@ -703,6 +707,8 @@ impl MinutesWindow {
             note,
             before: Duration::ZERO,
             since: None,
+            // Found after a crash: who spoke then is not known.
+            speaking: Vec::new(),
         });
     }
 
@@ -753,7 +759,12 @@ impl MinutesWindow {
     /// Saves the audio of a stopped recording into its meeting folder and
     /// transcribes it there. Returns the folder.
     async fn finish(&self, recording: Recording, abort: Abort) -> Result<PathBuf, String> {
-        let Recording { staging, note, .. } = recording;
+        let Recording {
+            staging,
+            note,
+            speaking,
+            ..
+        } = recording;
         let out = session::meeting_dir(&session::meetings_root(), note.started_at, &note.title);
         // The preview's model has to leave the GPU before the final one comes.
         let preview = self.imp().preview.borrow_mut().take();
@@ -763,7 +774,7 @@ impl MinutesWindow {
         if let Err(e) = session::private_dir(&session::meetings_root(), &out) {
             minutes_engine::warn(format!("could not make {}: {e}", out.display()));
         }
-        self.save_preview(&out, &note, lines);
+        self.save_preview(&out, &note, lines, &speaking);
         let speakers = {
             let seen = self.imp().teams.borrow();
             [
@@ -808,7 +819,36 @@ impl MinutesWindow {
             .recv()
             .await
             .unwrap_or_else(|_| Err("the transcription stopped unexpectedly".into()));
+        if result.is_ok() {
+            self.name_from_teams(&out, &speaking);
+        }
         result.map(|()| out)
+    }
+
+    /// Gives the other side's voices in the finished transcript the names of
+    /// the people Teams showed speaking during their lines.
+    fn name_from_teams(&self, dir: &Path, speaking: &teams::Speaking) {
+        if speaking.iter().all(|(_, names)| names.is_empty()) {
+            return;
+        }
+        let Some((_, mut manifest)) = meeting::open(dir)
+        else {
+            return;
+        };
+        let transcript = dir.join("transcript.md");
+        let Ok(markdown) = std::fs::read_to_string(&transcript) else {
+            return;
+        };
+        let me = self.imp().teams.borrow().me.clone();
+        let named = session::name_from_teams(&mut manifest, &markdown, speaking, me.as_deref());
+        if named == markdown {
+            return;
+        }
+        if let Err(e) = std::fs::write(&transcript, named)
+            .and_then(|()| meeting::write(dir, &manifest).map(|_| ()))
+        {
+            minutes_engine::warn(format!("could not name the speakers from Teams: {e}"));
+        }
     }
 
     fn cancel(&self) {
@@ -882,6 +922,36 @@ impl MinutesWindow {
     }
 
     /// A side's label as the preview shows it: the names Teams gave, when it did.
+    /// The name of a line of the preview said from `start_ms` to `end_ms`:
+    /// on the other side, the person Teams showed speaking meanwhile, when
+    /// there was one; else as `side_name`.
+    fn line_name(&self, label: &str, start_ms: i64, end_ms: i64) -> String {
+        let recording = self.imp().recording.borrow();
+        let speaking = recording.as_ref().map_or(&[][..], |r| &r.speaking[..]);
+        self.name_in(label, start_ms, end_ms, speaking)
+    }
+
+    /// `line_name` from a given record of who spoke.
+    fn name_in(&self, label: &str, start_ms: i64, end_ms: i64, speaking: &teams::Speaking) -> String {
+        if label == meeting::DEFAULT_REMOTE {
+            let me = self.imp().teams.borrow().me.clone();
+            let heard = teams::speaker_between(speaking, start_ms, end_ms);
+            if let Some(name) = heard.filter(|n| Some(n) != me.as_ref()) {
+                return name;
+            }
+        }
+        self.side_name(label)
+    }
+
+    /// Where the recording is now, in milliseconds of audio.
+    fn heard_ms(&self) -> i64 {
+        self.imp()
+            .recording
+            .borrow()
+            .as_ref()
+            .map_or(0, |r| r.elapsed().as_millis() as i64)
+    }
+
     fn side_name(&self, label: &str) -> String {
         let seen = self.imp().teams.borrow();
         match label {
@@ -965,6 +1035,12 @@ impl MinutesWindow {
                     return;
                 }
                 if let Some(snapshot) = snapshot.filter(|s| s.in_call) {
+                    if let Some(recording) = win.imp().recording.borrow_mut().as_mut()
+                        && recording.since.is_some()
+                    {
+                        let at = recording.elapsed().as_millis() as i64;
+                        recording.speaking.push((at, snapshot.speaking.clone()));
+                    }
                     let changed = {
                         let mut seen = win.imp().teams.borrow_mut();
                         let before = (seen.muted, seen.me.clone(), seen.others.len());
@@ -1030,7 +1106,7 @@ impl MinutesWindow {
             let time = clock((line.start_ms / 1000).max(0) as u64);
             imp.live_list.append(&transcript_row(
                 &time,
-                &self.side_name(&line.speaker),
+                &self.line_name(&line.speaker, line.start_ms, line.end_ms),
                 &line.text,
             ));
         }
@@ -1052,7 +1128,8 @@ impl MinutesWindow {
         if !text.is_empty() {
             imp.live_group.set_visible(true);
             let time = clock((start_ms / 1000).max(0) as u64);
-            let row = transcript_row(&time, &self.side_name(speaker), &format!("{text} …"));
+            let name = self.line_name(speaker, start_ms, self.heard_ms());
+            let row = transcript_row(&time, &name, &format!("{text} …"));
             row.add_css_class("dimmed");
             imp.live_list.append(&row);
             drafts.push((speaker, start_ms, text, row));
@@ -1085,7 +1162,7 @@ impl MinutesWindow {
             .map(|l| {
                 (
                     clock((l.start_ms / 1000).max(0) as u64),
-                    self.side_name(&l.speaker),
+                    self.line_name(&l.speaker, l.start_ms, l.end_ms),
                     l.text.clone(),
                 )
             })
@@ -1093,7 +1170,7 @@ impl MinutesWindow {
         for (speaker, start_ms, text, _) in self.imp().drafts.borrow().iter() {
             lines.push((
                 clock((start_ms / 1000).max(0) as u64),
-                self.side_name(speaker),
+                self.line_name(speaker, *start_ms, self.heard_ms()),
                 format!("{text} …"),
             ));
         }
@@ -1102,7 +1179,7 @@ impl MinutesWindow {
 
     /// Writes the preview into the meeting folder, to use while the final
     /// transcript is made.
-    fn save_preview(&self, out: &Path, note: &Note, lines: Vec<Segment>) {
+    fn save_preview(&self, out: &Path, note: &Note, lines: Vec<Segment>, speaking: &teams::Speaking) {
         let imp = self.imp();
         if lines.is_empty() {
             return;
@@ -1115,7 +1192,7 @@ impl MinutesWindow {
         let lines = lines
             .into_iter()
             .map(|l| Segment {
-                speaker: self.side_name(&l.speaker),
+                speaker: self.name_in(&l.speaker, l.start_ms, l.end_ms, speaking),
                 ..l
             })
             .collect();

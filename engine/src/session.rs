@@ -317,9 +317,114 @@ pub fn name_speakers(manifest: &mut Manifest, markdown: &str) -> String {
     meeting::relabel_all(markdown, &renames)
 }
 
+/// Names the voices of the other side after who Teams showed speaking while
+/// they spoke (see `teams::Speaking`): a voice takes the name lit during most
+/// of its lines, the one voice with the most votes first, each name once, and
+/// never `me`. Voices already named from Teams at the time of the call, or
+/// with too little said to tell, keep their name. Returns the renamed
+/// transcript; `manifest` gets the new names.
+pub fn name_from_teams(
+    manifest: &mut Manifest,
+    markdown: &str,
+    speaking: &crate::teams::Speaking,
+    me: Option<&str>,
+) -> String {
+    let labels = manifest.default_labels();
+    let remote: Vec<usize> = (0..manifest.speakers.len())
+        .filter(|&i| {
+            labels
+                .get(i)
+                .and_then(|l| meeting::side_of(l))
+                .is_some_and(|(side, _)| side == meeting::DEFAULT_REMOTE)
+        })
+        .collect();
+    // Each line runs until the next one starts, 30 s at most.
+    let lines: Vec<(i64, String)> = markdown
+        .lines()
+        .filter_map(parse_segment)
+        .filter_map(|(time, speaker, _)| Some((clock_ms(time)?, speaker.to_owned())))
+        .collect();
+    let mut votes: Vec<(usize, String, usize)> = Vec::new();
+    for &i in &remote {
+        let name = &manifest.speakers[i];
+        let mut tally: Vec<(String, usize)> = Vec::new();
+        let mut said = 0;
+        for (n, (start, speaker)) in lines.iter().enumerate() {
+            if speaker != name {
+                continue;
+            }
+            let end = lines.get(n + 1).map_or(start + 30_000, |next| next.0.min(start + 30_000));
+            let Some(heard) = crate::teams::speaker_between(speaking, *start, end) else {
+                continue;
+            };
+            said += 1;
+            match tally.iter_mut().find(|(h, _)| *h == heard) {
+                Some((_, count)) => *count += 1,
+                None => tally.push((heard, 1)),
+            }
+        }
+        // Named when the same person is lit for most of its lines, three at least.
+        if let Some((heard, count)) = tally.into_iter().max_by_key(|(_, c)| *c)
+            && count >= 3
+            && count * 2 > said
+            && Some(heard.as_str()) != me
+        {
+            votes.push((i, heard, count));
+        }
+    }
+    votes.sort_by_key(|(_, _, count)| std::cmp::Reverse(*count));
+    let mut renames = Vec::new();
+    for (i, heard, _) in votes {
+        let taken = manifest.speakers.contains(&heard);
+        if !taken {
+            renames.push((manifest.speakers[i].clone(), heard.clone()));
+            manifest.speakers[i] = heard;
+        }
+    }
+    meeting::relabel_all(markdown, &renames)
+}
+
+/// "01:23" or "1:01:23" as milliseconds.
+fn clock_ms(time: &str) -> Option<i64> {
+    time.split(':')
+        .try_fold(0i64, |total, part| Some(total * 60 + part.parse::<i64>().ok()?))
+        .map(|secs| secs * 1000)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_other_voices_take_the_names_teams_showed_speaking() {
+        let mut manifest = recording(&["Ludovic", "Remote 1", "Remote 2"]);
+        manifest.labels = vec!["You 1".into(), "Remote 1".into(), "Remote 2".into()];
+        let markdown = "## Transcript\n\n\
+            **[00:00] Remote 1:** Bonjour.\n\n\
+            **[00:04] Remote 1:** On commence.\n\n\
+            **[00:08] Ludovic:** Oui.\n\n\
+            **[00:10] Remote 2:** Moi aussi.\n\n\
+            **[00:14] Remote 1:** Bien.\n\n\
+            **[00:18] Remote 2:** Voilà.\n\n";
+        let names = |n: &[&str]| n.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        let speaking: Vec<(i64, Vec<String>)> = (0..40)
+            .map(|half| {
+                let at = half * 500;
+                let who = match at {
+                    0..8_000 | 14_000..18_000 => names(&["Jeanne Martin"]),
+                    8_000..10_000 => names(&["Ludovic"]),
+                    _ => names(&["Paul Durand"]),
+                };
+                (at, who)
+            })
+            .collect();
+        let named = name_from_teams(&mut manifest, markdown, &speaking, Some("Ludovic"));
+        assert_eq!(manifest.speakers, ["Ludovic", "Jeanne Martin", "Remote 2"]);
+        assert!(named.contains("**[00:00] Jeanne Martin:** Bonjour."));
+        // Paul spoke twice: not enough to be sure.
+        assert!(named.contains("**[00:10] Remote 2:** Moi aussi."));
+        assert!(named.contains("**[00:08] Ludovic:** Oui."));
+    }
 
     fn scratch(name: &str) -> PathBuf {
         let dir =
