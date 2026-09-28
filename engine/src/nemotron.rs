@@ -122,12 +122,18 @@ impl Model {
         let threads = std::thread::available_parallelism()
             .map_or(4, |n| n.get())
             .min(8);
-        let session = Session::builder()
+        let builder = Session::builder()
             .map_err(ort_error)?
             .with_intra_threads(threads)
-            .map_err(ort_error)?
-            .commit_from_file(path)
             .map_err(ort_error)?;
+        // On the GPU when there is one; ONNX Runtime keeps on the CPU what
+        // WebGPU cannot run, or everything if it cannot start.
+        #[cfg(feature = "vulkan")]
+        let builder = builder
+            .with_execution_providers([ort::ep::WebGPU::default().build()])
+            .map_err(ort_error)?;
+        let mut builder = builder;
+        let session = builder.commit_from_file(path).map_err(ort_error)?;
         Ok(Self {
             session,
             config: CONFIG,
