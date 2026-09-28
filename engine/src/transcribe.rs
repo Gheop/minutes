@@ -832,8 +832,11 @@ pub fn transcribe(
     // still has to be downloaded: that download shows its own progress.
     let (local, remote, context) = std::thread::scope(|scope| {
         let quiet = async_channel::unbounded().0;
-        let loading = crate::models::find()
-            .is_some()
+        // Loaded meanwhile when the speakers are found on the CPU. With them
+        // on the GPU (WebGPU, Vulkan build), the upload of whisper's model
+        // hung once in the app while Nemotron ran; they take 2 to 3 s there,
+        // so waiting for them costs little.
+        let loading = (crate::models::find().is_some() && !cfg!(feature = "vulkan"))
             .then(|| scope.spawn(move || load_whisper(&quiet, abort)));
         // `alone_at_mic = true`: your side is one person, you, however your
         // voice changes as you move or the room's sound mixes in.

@@ -9,6 +9,7 @@ import GObject from 'gi://GObject';
 import Shell from 'gi://Shell';
 import St from 'gi://St';
 import Clutter from 'gi://Clutter';
+import Pango from 'gi://Pango';
 
 import {Extension, gettext as _} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
@@ -118,8 +119,13 @@ class MinutesIndicator extends PanelMenu.Button {
         this._previewBox.destroy_all_children();
         for (const line of previewLines(this._lines)) {
             this._previewBox.add_child(new St.Label({text: line.heading, style_class: 'minutes-preview-heading'}));
-            const text = new St.Label({text: line.text, style_class: 'minutes-preview-text'});
-            text.clutter_text.line_wrap = true;
+            const text = new St.Label({text: line.text, style_class: 'minutes-preview-text', x_expand: true});
+            // St ellipsizes labels unless told not to, even with wrapping on.
+            text.clutter_text.set({
+                line_wrap: true,
+                line_wrap_mode: Pango.WrapMode.WORD_CHAR,
+                ellipsize: Pango.EllipsizeMode.NONE,
+            });
             this._previewBox.add_child(text);
         }
         this._previewSection.actor.visible = this._lines.length > 0;

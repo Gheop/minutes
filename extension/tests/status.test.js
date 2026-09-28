@@ -36,6 +36,20 @@ check('the preview shows at most twelve by default', previewLines(lines).length,
 check('each line gets who and when', previewLines(lines)[0].heading, 'You · 00:08');
 check('no preview yet is no lines', previewLines(null), []);
 
+const talk = [
+    ['05:05', 'Others', 'And then,'],
+    ['05:08', 'Others', 'to talk things over'],
+    ['05:13', 'Others', 'So...'],
+    ['05:20', 'You', 'Yes.'],
+    ['05:22', 'Others', 'The choice'],
+    ['06:10', 'Others', 'Later on.'],
+];
+check('pieces one person says in a row read as one paragraph', previewLines(talk)[0],
+    {heading: 'Others · 05:05', text: 'And then, to talk things over So...'});
+check('someone else speaking starts a new paragraph', previewLines(talk).map(p => p.heading),
+    ['Others · 05:05', 'You · 05:20', 'Others · 05:22', 'Others · 06:10']);
+check('hours count in the gap', previewLines([['59:50', 'You', 'a'], ['1:00:10', 'You', 'b']]).length, 1);
+
 if (failed) {
     printerr(`${failed} failed`);
     imports.system.exit(1);

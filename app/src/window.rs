@@ -39,6 +39,8 @@ pub struct TeamsSeen {
     pub me: Option<String>,
     /// Everyone else seen in the call.
     pub others: BTreeSet<String>,
+    /// Teams said at its last read that you are in a call.
+    pub in_call: bool,
 }
 
 impl TeamsSeen {
@@ -118,6 +120,9 @@ mod imp {
         pub sources: RefCell<Option<(Source, Source)>>,
         pub recording: RefCell<Option<Recording>>,
         pub abort: RefCell<Option<Abort>>,
+        /// Where the transcript's progress arrives; Cancel ends the wait
+        /// through it, even when whisper is stuck where it cannot see `abort`.
+        pub progress_events: RefCell<Option<async_channel::Sender<Event>>>,
         /// The transcript on screen, for Copy.
         pub markdown: RefCell<String>,
         /// Calls seen in the PipeWire graph, to offer recording them.
@@ -289,14 +294,16 @@ impl MinutesWindow {
         });
     }
 
-    /// The call being recorded has ended: stop, and say so.
-    fn call_over(&self, name: &str) {
+    /// The call being recorded has ended: stop, and say so. `why` goes to
+    /// the journal, so a recording stopped too soon can be explained.
+    fn call_over(&self, name: &str, why: &str) {
         let Some(app) = self.application() else {
             return;
         };
         if self.imp().recording.borrow().is_none() {
             return;
         }
+        minutes_engine::warn(format!("recording stopped on its own: {why}"));
         self.stop();
         let notification = gio::Notification::new(&gettext("Recording stopped"));
         notification.set_body(Some(
@@ -320,7 +327,16 @@ impl MinutesWindow {
                 notification.add_button(&gettext("Record"), "app.record");
                 app.send_notification(Some("call"), &notification);
             }
-            Change::Ended(_, name) if recording => self.call_over(&name),
+            // A call waiting in silence, or muted, can close its audio for a
+            // while: when Teams says the call goes on, it goes on.
+            Change::Ended(_, name) if recording && self.imp().teams.borrow().in_call => {
+                minutes_engine::warn(format!(
+                    "{name} closed its audio, but Teams is still in the call: recording goes on"
+                ));
+            }
+            Change::Ended(_, name) if recording => {
+                self.call_over(&name, &format!("{name} had no call audio for 15 s"))
+            }
             Change::Ended(..) => app.withdraw_notification("call"),
             Change::Started(..) => {}
         }
@@ -760,9 +776,11 @@ impl MinutesWindow {
 
         let (events_tx, events_rx) = async_channel::unbounded::<Event>();
         let (done_tx, done_rx) = async_channel::bounded(1);
-        let dir = out.clone();
+        *self.imp().progress_events.borrow_mut() = Some(events_tx.clone());
+        let (dir, thread_abort) = (out.clone(), abort.clone());
         std::thread::spawn(move || {
-            let result = session::write_up(&staging, &dir, &note, speakers, &events_tx, &abort);
+            let result =
+                session::write_up(&staging, &dir, &note, speakers, &events_tx, &thread_abort);
             let _ = done_tx.send_blocking(result);
             let _ = events_tx.send_blocking(Event::Finished);
         });
@@ -779,6 +797,13 @@ impl MinutesWindow {
                 Event::Finished => break,
             }
         }
+        imp.progress_events.borrow_mut().take();
+        // Cancelled while whisper was out of reach (loading the model, say):
+        // the thread is left to finish or not on its own, the audio is kept.
+        if abort.load(Ordering::Relaxed) && done_rx.is_empty() {
+            minutes_engine::warn("transcript cancelled before whisper stopped; left running");
+            return Err(CANCELLED.into());
+        }
         let result = done_rx
             .recv()
             .await
@@ -787,8 +812,12 @@ impl MinutesWindow {
     }
 
     fn cancel(&self) {
-        if let Some(abort) = self.imp().abort.borrow().as_ref() {
+        let imp = self.imp();
+        if let Some(abort) = imp.abort.borrow().as_ref() {
             abort.store(true, Ordering::Relaxed);
+        }
+        if let Some(events) = imp.progress_events.borrow().as_ref() {
+            let _ = events.try_send(Event::Finished);
         }
     }
 
@@ -928,8 +957,11 @@ impl MinutesWindow {
                     Some(_) if was_in_call => out += 1,
                     _ => {}
                 }
+                if let Some(s) = &snapshot {
+                    win.imp().teams.borrow_mut().in_call = s.in_call;
+                }
                 if out >= 3 {
-                    win.call_over("Teams");
+                    win.call_over("Teams", "Teams showed no call three reads in a row");
                     return;
                 }
                 if let Some(snapshot) = snapshot.filter(|s| s.in_call) {
