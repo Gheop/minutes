@@ -12,6 +12,8 @@ set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 app_id=io.github.gheop.Minutes
 bin=$HOME/.local/bin
+# Next to bin/, where the binary looks for the libraries it comes with.
+lib=$HOME/.local/lib/minutes
 share=${XDG_DATA_HOME:-$HOME/.local/share}
 autostart=${XDG_CONFIG_HOME:-$HOME/.config}/autostart/$app_id.desktop
 
@@ -22,6 +24,7 @@ while [ $# -gt 0 ]; do
         --features) features=(--features "$2"); shift ;;
         --autostart) with_autostart=true ;;
         --uninstall)
+            rm -rf "$lib"
             rm -f "$bin/minutes" "$share/applications/$app_id.desktop" "$share/metainfo/$app_id.metainfo.xml" \
                 "$share/icons/hicolor/scalable/apps/$app_id.svg" "$share/icons/hicolor/symbolic/apps/$app_id-symbolic.svg" \
                 "$autostart"
@@ -40,6 +43,10 @@ cd "$here"
 cargo build --release --workspace "${features[@]}"
 
 install -Dm755 target/release/minutes "$bin/minutes"
+# The WebGPU library of the Vulkan build.
+if [ -e target/release/libwebgpu_dawn.so ]; then
+    install -Dm644 target/release/libwebgpu_dawn.so "$lib/libwebgpu_dawn.so"
+fi
 # The launcher runs the installed binary, whatever the session's PATH.
 sed "s|^Exec=minutes|Exec=$bin/minutes|" app/data/$app_id.desktop > "$share/applications/$app_id.desktop"
 install -Dm644 app/data/$app_id.metainfo.xml "$share/metainfo/$app_id.metainfo.xml"

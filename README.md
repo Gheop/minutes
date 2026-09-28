@@ -42,6 +42,8 @@ CUDAARCHS=86 cargo run --release -p minutes --features cuda     # NVIDIA GPU; se
 
 It needs PipeWire with `parec` and `pacat`, `ffmpeg` with libopus, GTK 4 and libadwaita 1.6 or newer, gettext, and Rust and CMake to build. The Vulkan build needs the Vulkan headers and `glslc` (`vulkan-headers` and `glslc` on Fedora, `vulkan-headers` and `shaderc` on Arch); the CUDA build needs the CUDA toolkit with `nvcc` on the `PATH`, recent enough for your GCC.
 
+The Vulkan build also finds the speakers on the GPU, through ONNX Runtime's WebGPU (Vulkan underneath): 2.6 s instead of 15.6 s on the CPU for 5 minutes of call. Its library, `libwebgpu_dawn.so`, is installed in `~/.local/lib/minutes`.
+
 Prefer Vulkan, also on an NVIDIA card. On an RTX 2050 it transcribes as fast as CUDA (42.3 s against 44.4 s for 5 minutes of call) with the same quality, and the instance waiting in the background takes 58 MB instead of 237 MB: the CUDA libraries fill over 100 MB as soon as they are loaded. Whisper runs on the first dedicated GPU; `GGML_VK_VISIBLE_DEVICES` picks another. The first transcript after a new build takes about 10 s longer, while the driver compiles the shaders once.
 
 `minutes <meeting folder>` opens a meeting. `minutes transcribe <mic> <computer>` and `minutes transcribe-file <audio>` print a transcript as Markdown without opening a window.
@@ -146,6 +148,11 @@ fix = "Okafur => Okafor"
 MIT, like the project it comes from. See [LICENSE](LICENSE).
 
 ## Changelog
+
+### v0.10.0 — Speakers on the GPU (2026-09-28)
+
+- With the Vulkan build, the speakers are found on the GPU, through ONNX Runtime's WebGPU: 2.6 s instead of 15.6 s for 5 minutes of call, so the transcript is ready in 27.8 s instead of 42.1 s, with exactly the same speakers
+- `install.sh` puts the WebGPU library in `~/.local/lib/minutes`, where Minutes looks for it
 
 ### v0.9.1 — A steadier preview (2026-09-27)
 

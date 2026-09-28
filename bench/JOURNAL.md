@@ -65,3 +65,9 @@ The preview, 10 alternating runs each: 43 lines every time for both; median dela
 | # | Hypothesis | Files | Result | Δ p90 delay | Δ RSS | Verdict |
 |---|---|---|---|---|---|---|
 | 8 | The preview sleeps half a second after its work rather than until the next half second, so each line also waits for the passes before it; counting whisper's time in the tick should shorten the waits behind slow passes | `live.rs` | 10 alternating runs: median 2.8 s both; 90th percentile 5.0 → 4.7 s (±0.13 / 0.15), worst line 6.2 → 5.5 s, drafts at the 90th percentile 1.5 → 1.4 s; 46 and 45.5 lines. The same work, done sooner after a slow pass | −6 % (worst −11 %) | — | Kept |
+
+### Third round: the speakers on the GPU (2026-09-28)
+
+| # | Hypothesis | Files | Result | Δ after Stop | Δ at rest | Verdict |
+|---|---|---|---|---|---|---|
+| 10 | Nemotron runs on the CPU through ONNX Runtime, 6 cores for 6 s per minute of speech, while the GPU waits. ONNX Runtime's WebGPU provider runs on Vulkan, like whisper, with no cuDNN to install; its prebuilt library comes with the `ort` crate | `nemotron.rs`, `engine/Cargo.toml`, `app/build.rs`, `install.sh` | Diarizing 5 minutes: 26.5 s → 5.6 s, the same 60 turns to the hundredth of a second, 256 MB of VRAM, the RTX picked on its own. 10 alternating runs, first 5 minutes of ES2004a: 42.1 s ± 2.3 % → 27.8 s ± 0.4 %, finding speakers 15.6 → 2.6 s. The 12 bench cases, whole meetings included, score exactly the same; the whole ES2004a call 178 → 135 s. The Dawn library (12 MB on disk) is linked at start: +3.5 MB at rest (57.8 → 61.3) | −34 % | +6 % | Kept |
