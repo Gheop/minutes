@@ -1,11 +1,34 @@
-//! Fixes for words whisper keeps getting wrong, most often names.
+//! Names and words whisper keeps getting wrong.
 //!
-//! Each `fix = "Sasse => Sas"` line in the config file replaces the words on
+//! Before: `prompt = "…"` in the config file, and the names of the people in
+//! the call (`set_names`), tell whisper what to expect. After: each
+//! `fix = "Sasse => Sas"` line in the config file replaces the words on
 //! the left with the words on the right in the finished transcript. The match
 //! ignores case and only takes whole words, so "Sasse" does not touch
 //! "Sassenage".
 
+use std::sync::Mutex;
+
 use crate::transcribe::Segment;
+
+/// The people in the call being transcribed, from the meeting app.
+static NAMES: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+/// The names of the people in the call to transcribe next.
+pub fn set_names(names: &[String]) {
+    *NAMES.lock().unwrap_or_else(|e| e.into_inner()) = names.to_vec();
+}
+
+/// What whisper is told to expect: the `prompt` of the config file, then the
+/// names of the people in the call.
+pub fn prompt() -> Option<String> {
+    let names = NAMES.lock().unwrap_or_else(|e| e.into_inner()).join(", ");
+    let parts: Vec<String> = crate::models::config_value("prompt")
+        .into_iter()
+        .chain((!names.is_empty()).then(|| format!("{names}.")))
+        .collect();
+    (!parts.is_empty()).then(|| parts.join(" "))
+}
 
 pub fn load() -> Vec<(String, String)> {
     crate::models::config_values("fix")

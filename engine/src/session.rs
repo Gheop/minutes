@@ -51,6 +51,9 @@ pub struct Note {
     pub started_at: i64,
     pub format: Format,
     pub language: String,
+    /// The people the meeting app showed in the call: whisper is told to
+    /// expect their names.
+    pub names: Vec<String>,
 }
 
 impl Note {
@@ -60,6 +63,7 @@ impl Note {
             "started_at": self.started_at,
             "format": self.format.key(),
             "language": self.language,
+            "names": self.names,
         });
         std::fs::write(staging.join(NOTE), note.to_string())
     }
@@ -75,6 +79,12 @@ impl Note {
             started_at: value["started_at"].as_i64()?,
             format: Format::from_key(value["format"].as_str().unwrap_or("mono")),
             language: value["language"].as_str().unwrap_or("auto").to_owned(),
+            names: value["names"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|n| n.as_str().map(str::to_owned))
+                .collect(),
         })
     }
 }
@@ -141,6 +151,7 @@ pub fn write_up(
     events: &crate::transcribe::Events,
     abort: &crate::transcribe::Abort,
 ) -> Result<(), String> {
+    crate::glossary::set_names(&note.names);
     let saved = save_audio(staging, out, note.format);
     let mut manifest = Manifest {
         title: note.title.clone(),
@@ -472,6 +483,7 @@ mod tests {
             started_at: 1_790_000_000,
             format: Format::Stereo,
             language: "fr".into(),
+            names: vec!["Jeanne Martin".into()],
         };
         note.write(&dir).unwrap();
         assert_eq!(Note::read(&dir), Some(note));

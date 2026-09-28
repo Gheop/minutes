@@ -483,6 +483,7 @@ impl MinutesWindow {
             started_at,
             format: Format::Mono,
             language: self.language().to_owned(),
+            names: Vec::new(),
         };
         let staging = session::staging_root().join(started_at.to_string());
         let (mic_raw, system_raw) = session::raw_tracks(&staging);
@@ -504,6 +505,8 @@ impl MinutesWindow {
             ..TeamsSeen::default()
         };
         self.apply_mute();
+        // The last call's names are not this one's.
+        minutes_engine::glossary::set_names(&[]);
         self.start_preview(&staging, &note.language);
         *imp.recording.borrow_mut() = Some(Recording {
             staging,
@@ -698,6 +701,7 @@ impl MinutesWindow {
                 .unwrap_or_else(|| glib::real_time() / 1_000_000),
             format: Format::Mono,
             language: "auto".into(),
+            names: Vec::new(),
         });
         imp.recovery_banner.set_revealed(false);
         imp.content_page.set_title(&note.title);
@@ -943,6 +947,23 @@ impl MinutesWindow {
         self.side_name(label)
     }
 
+    /// Keeps the names seen in Teams with the recording, so whisper expects
+    /// them, now for the preview and later for the transcript, also after a
+    /// crash.
+    fn note_names(&self) {
+        let names: Vec<String> = {
+            let seen = self.imp().teams.borrow();
+            seen.me.iter().chain(&seen.others).cloned().collect()
+        };
+        minutes_engine::glossary::set_names(&names);
+        if let Some(recording) = self.imp().recording.borrow_mut().as_mut() {
+            recording.note.names = names;
+            if let Err(e) = recording.note.write(&recording.staging) {
+                minutes_engine::warn(format!("could not keep the names seen in Teams: {e}"));
+            }
+        }
+    }
+
     /// Where the recording is now, in milliseconds of audio.
     fn heard_ms(&self) -> i64 {
         self.imp()
@@ -1058,6 +1079,7 @@ impl MinutesWindow {
                     if changed {
                         win.apply_mute();
                         win.publish_live();
+                        win.note_names();
                     }
                 }
                 drop(win);

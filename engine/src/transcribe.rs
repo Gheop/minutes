@@ -1242,7 +1242,7 @@ fn run_whisper(
         .rev()
         .nth(600)
         .map_or(earlier, |(i, _)| &earlier[i..]);
-    let prompt = match (crate::models::config_value("prompt"), tail.trim()) {
+    let prompt = match (crate::glossary::prompt(), tail.trim()) {
         (prompt, "") => prompt,
         (Some(prompt), tail) => Some(format!("{prompt} {tail}")),
         (None, tail) => Some(tail.to_owned()),
