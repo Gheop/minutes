@@ -123,7 +123,22 @@ pub fn meeting_dir(root: &Path, started_at: i64, title: &str) -> PathBuf {
         .and_then(|t| t.format("%Y%m%d%H%M"))
         .map(|s| s.to_string())
         .unwrap_or_default();
-    root.join(format!("{stamp} {}", meeting::safe_name(title)))
+    let name = format!("{stamp} {}", meeting::safe_name(title));
+    // Two recordings in the same minute with the same title: the second gets
+    // "… 2" rather than the first one's folder. The folder of this very
+    // recording (a recovery after a crash) is its own to reuse.
+    (1..)
+        .map(|n| match n {
+            1 => root.join(&name),
+            n => root.join(format!("{name} {n}")),
+        })
+        .find(|dir| {
+            !dir.exists()
+                || meeting::find(dir)
+                    .and_then(|path| meeting::open(&path))
+                    .is_some_and(|(_, manifest)| manifest.started_at == started_at)
+        })
+        .expect("a free name")
 }
 
 /// Writes the audio of a finished recording into its meeting folder, in the
@@ -521,6 +536,23 @@ mod tests {
         assert!(stamp.bytes().all(|b| b.is_ascii_digit()));
         assert_eq!(title, "Point- dev-java");
         assert_eq!(dir.parent(), Some(Path::new("/m")));
+    }
+
+    #[test]
+    fn a_second_recording_in_the_same_minute_gets_its_own_folder() {
+        let root = scratch("same-minute");
+        let first = meeting_dir(&root, 1_790_000_000, "Point");
+        std::fs::create_dir_all(&first).unwrap();
+        meeting::write(&first, &recording(&["Sib"])).unwrap();
+        // The same recording again (a recovery): the same folder.
+        let mut again = recording(&["Sib"]);
+        again.started_at = 1_790_000_000;
+        meeting::write(&first, &again).unwrap();
+        assert_eq!(meeting_dir(&root, 1_790_000_000, "Point"), first);
+        // Another one twenty seconds later: its own.
+        let second = meeting_dir(&root, 1_790_000_020, "Point");
+        assert_ne!(second, first);
+        assert!(second.to_string_lossy().ends_with("Point 2"));
     }
 
     #[test]
