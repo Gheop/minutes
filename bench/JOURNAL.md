@@ -77,3 +77,19 @@ The preview, 10 alternating runs each: 43 lines every time for both; median dela
 | # | Hypothesis | Files | Result | Δ after Stop | Δ peak RSS | Verdict |
 |---|---|---|---|---|---|---|
 | 9 | Whisper's decoding reads the whole model for each token, and the RTX 2050 has a narrow memory bus (64 bits); large-v3-turbo in 8 or 5 bits (874 / 574 MB instead of 1.6 GB) should decode faster, at a quality to be measured | `models.rs` | First 5 minutes of ES2004a, 10 alternating runs, speakers on the CPU: f16 41.7 s ± 2.8 %, q8_0 39.6 s ± 1.9 %, q5_0 36.5 s ± 2.1 % (whisper 25.9, 23.9, 21.0 s); peak RSS 614, 550, 525 MB. But on the whole ES2004a meeting q5_0 is slower: whisper 125.6 s against 114.5 s (median of 3, speakers on the GPU), and 207.6 against 178.0 s in the quality run, q8_0 314 s; likely more of whisper's retries on hard passages. On the 42-minute hearing of the Assemblée nationale in French, 3 alternating runs: f16 235.1 s, q5_0 221.3 s (−5.9 %). Quality: q5_0 as good as f16 on 12 of 14 English cases and in French (2.2 % of the words differ, nearly all commas); q8_0 lost a stretch once, whole ES2004a import 94.1 → 71.3 % right person | q5_0 −12.5 % (5 min), +10 % (17 min, English), −5.9 % (42 min, French) | −15 % | Offered as options; the default stays large-v3-turbo, which no meeting made slower |
+
+### Words whisper should know (2026-09-28)
+
+A 2 h 47 French meeting came out with its work terms misspelled: tool names, acronyms, the name of the organisation. The config's `prompt` lists them, but whisper.cpp only gives it to the first 30-second window. whisper.cpp now has `carry_initial_prompt`, which gives it to every window; whisper-rs 0.16 has no setter for it, hence `vendor/whisper-rs`.
+
+On 74 minutes of that meeting (44:00 to 1:58:00, two tracks, large-v3-turbo, the same `prompt` of 8 terms, no `fix` lines), counting the terms of the prompt:
+
+| | Prompt in the first window | Carried to every window |
+|---|---|---|
+| Terms written right | 65 | 80 |
+| Terms misspelled | 13 | 2 |
+| Prompt copied into the transcript | 0 | 0 |
+| Time | 457.7 s | 395.8 s |
+| Words | 12,200 | 12,101 |
+
+On a 20-minute stretch with few of the terms, the three versions (no prompt, first window, every window) differed by a few words either way: run-to-run noise. Kept: carried whenever there is a prompt. The names the meeting app shows in the call are added to it.

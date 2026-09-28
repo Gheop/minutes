@@ -1233,8 +1233,9 @@ fn run_whisper(
     abort: &Abort,
 ) -> Result<(Vec<Word>, Option<String>), String> {
     let mut state = context.create_state().map_err(|e| e.to_string())?;
-    // Names and jargon whisper would otherwise misspell. Whisper only reads it
-    // for its first window; the `fix` lines of the glossary cover the rest.
+    // Names and jargon whisper would otherwise misspell, carried to every
+    // 30-second window: on 74 minutes of a French meeting, 2 work terms
+    // misspelled instead of 13 with the first window only.
     // Text heard just before, when whisper gets a call in pieces, goes after
     // it; whisper keeps the end of a prompt that is too long.
     let tail = earlier
@@ -1250,6 +1251,7 @@ fn run_whisper(
     let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
     if let Some(prompt) = &prompt {
         params.set_initial_prompt(prompt);
+        params.set_carry_initial_prompt(true);
     }
     // Whisper encodes 30 s windows, silence added to fill them; a few seconds
     // of preview cost as much as 30. `fitted` sizes the window to the audio
