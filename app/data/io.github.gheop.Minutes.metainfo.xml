@@ -25,6 +25,11 @@
     <control>pointing</control>
   </supports>
   <releases>
+    <release version="0.11.2" date="2026-09-29">
+      <description>
+        <p>A microphone or computer sound that stops coming in during a recording, as when a headset is connected in the middle of a call, is picked up again within seconds.</p>
+      </description>
+    </release>
     <release version="0.11.1" date="2026-09-28">
       <description>
         <p>A second recording started in the same minute no longer replaces the first one's folder.</p>
