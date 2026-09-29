@@ -167,6 +167,12 @@ MIT, like the project it comes from. See [LICENSE](LICENSE).
 
 ## Changelog
 
+### v0.12.0 — Words to check (2026-09-29)
+
+- After a meeting, "N words to check" above the transcript: the words whisper was unsure of or wrote several ways, at most 10, each with its sentence and a button to hear it
+- Keep a spelling and the transcript is fixed, and the next meetings get it right; set a word aside and it is not asked again. Everything goes to your settings, on your computer
+- Right technical terms whisper wrote sure of itself (Grafana, Kubernetes) are not asked, nor the names of the people in the call
+
 ### v0.11.2 — A headset connected mid-call (2026-09-29)
 
 - When the microphone or the computer sound sends nothing for 5 s during a recording, Minutes listens to it again, on the device in use now: connecting AirPods after the call started had frozen the computer sound, and the live preview with it. The gap is filled with silence, so both tracks stay in step, and the journal says so
