@@ -12,6 +12,7 @@ pub mod live;
 pub mod meeting;
 pub mod models;
 pub mod nemotron;
+pub mod review;
 pub mod session;
 pub mod teams;
 pub mod transcribe;

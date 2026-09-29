@@ -251,6 +251,109 @@ pub fn dtw_preset() -> Option<DtwModelPreset> {
     known(&configured()).map(|m| m.preset.clone())
 }
 
+/// The words the config already settles, in lower case: those of the
+/// `prompt`, both sides of each `fix`, and the `ignore` lines.
+pub fn settled_words() -> std::collections::HashSet<String> {
+    let mut words = std::collections::HashSet::new();
+    let mut add = |text: &str| {
+        for word in text.split(|c: char| !c.is_alphanumeric() && c != '-') {
+            if !word.is_empty() {
+                words.insert(word.to_lowercase());
+            }
+        }
+    };
+    for key in ["prompt", "fix", "ignore"] {
+        for value in config_values(key) {
+            add(&value);
+        }
+    }
+    words
+}
+
+/// A value as it can sit between quotes on one line.
+fn clean(value: &str) -> String {
+    value
+        .chars()
+        .filter(|c| !c.is_control() && *c != '"')
+        .collect::<String>()
+        .replace("=>", " ")
+        .trim()
+        .to_owned()
+}
+
+/// Rewrites the config file with `change`, creating it when needed.
+fn rewrite(change: impl FnOnce(String) -> String) -> std::io::Result<()> {
+    let path = config_file();
+    let text = std::fs::read_to_string(&path).unwrap_or_default();
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    std::fs::write(&path, change(text))
+}
+
+fn with_line(mut text: String, line: &str) -> String {
+    if !text.is_empty() && !text.ends_with('\n') {
+        text.push('\n');
+    }
+    text.push_str(line);
+    text.push('\n');
+    text
+}
+
+/// Adds `term` to the words whisper is told to expect (`prompt`).
+pub fn learn(term: &str) -> std::io::Result<()> {
+    let term = clean(term);
+    if term.is_empty() {
+        return Ok(());
+    }
+    rewrite(|text| with_term(&text, &term))
+}
+
+/// The config `text` with `term` in its `prompt`, before the full stop that
+/// ends it; unchanged when the term is there already.
+fn with_term(text: &str, term: &str) -> String {
+    let mut lines: Vec<String> = text.lines().map(str::to_owned).collect();
+    let prompt = lines.iter().position(|line| {
+        line.split_once('=')
+            .is_some_and(|(key, _)| key.trim() == "prompt")
+    });
+    let Some(i) = prompt else {
+        return with_line(text.to_owned(), &format!("prompt = \"{term}.\""));
+    };
+    let value = lines[i].split_once('=').map_or("", |(_, v)| v);
+    let value = value.trim().trim_matches('"').trim();
+    let already = value
+        .split(',')
+        .any(|w| w.trim().trim_end_matches('.').eq_ignore_ascii_case(term));
+    if !already {
+        let joined = match value.strip_suffix('.') {
+            Some(start) => format!("{start}, {term}."),
+            None if value.is_empty() => format!("{term}."),
+            None => format!("{value}, {term}"),
+        };
+        lines[i] = format!("prompt = \"{joined}\"");
+    }
+    lines.join("\n") + "\n"
+}
+
+/// Adds a `fix` line: `wrong` becomes `right` in the transcripts to come.
+pub fn add_fix(wrong: &str, right: &str) -> std::io::Result<()> {
+    let (wrong, right) = (clean(wrong), clean(right));
+    if wrong.is_empty() || wrong.eq_ignore_ascii_case(&right) {
+        return Ok(());
+    }
+    rewrite(|text| with_line(text, &format!("fix = \"{wrong} => {right}\"")))
+}
+
+/// Sets `word` aside: it is not asked about again.
+pub fn ignore(word: &str) -> std::io::Result<()> {
+    let word = clean(word);
+    if word.is_empty() {
+        return Ok(());
+    }
+    rewrite(|text| with_line(text, &format!("ignore = \"{word}\"")))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -260,5 +363,21 @@ mod tests {
         assert_eq!(known("large-v3").map(|m| m.name), Some("large-v3"));
         assert_eq!(known("ggml-small.en.bin").map(|m| m.name), Some("small.en"));
         assert!(known("gpt-5").is_none());
+    }
+
+    #[test]
+    fn a_term_joins_the_prompt_once_and_before_its_full_stop() {
+        let text = "alone_at_mic = true\nprompt = \"Grafana, Thanos.\"\nfix = \"a => b\"\n";
+        let once = with_term(text, "Loki");
+        assert_eq!(
+            once,
+            "alone_at_mic = true\nprompt = \"Grafana, Thanos, Loki.\"\nfix = \"a => b\"\n"
+        );
+        assert_eq!(with_term(&once, "loki"), once);
+        assert_eq!(
+            with_term("alone_at_mic = true", "Tempo"),
+            "alone_at_mic = true\nprompt = \"Tempo.\"\n"
+        );
+        assert_eq!(clean("Tem\"po => x\n"), "Tempo   x");
     }
 }
