@@ -256,7 +256,23 @@ pub fn transcribe_into(
     manifest.model = Some(crate::models::configured());
     meeting::write(out, manifest).map_err(|e| format!("could not write the meeting: {e}"))?;
     std::fs::write(out.join("transcript.md"), markdown)
-        .map_err(|e| format!("could not write the transcript: {e}"))
+        .map_err(|e| format!("could not write the transcript: {e}"))?;
+    // The words worth asking about. Names of the people in the call are
+    // known already.
+    let mut known = crate::models::settled_words();
+    for name in &manifest.speakers {
+        known.extend(name.split_whitespace().map(str::to_lowercase));
+    }
+    let doubts = crate::review::doubts(
+        &transcript.segments,
+        &transcript.heard,
+        crate::review::unknown_words(&transcript.language),
+        &known,
+    );
+    if let Err(e) = crate::review::save(out, &doubts) {
+        crate::warn(format!("could not keep the words to check: {e}"));
+    }
+    Ok(())
 }
 
 /// Splits `**[01:23] You:** text` into its time, speaker and text.

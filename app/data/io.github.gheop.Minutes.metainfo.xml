@@ -25,6 +25,11 @@
     <control>pointing</control>
   </supports>
   <releases>
+    <release version="0.12.0" date="2026-09-29">
+      <description>
+        <p>After a meeting, Minutes asks about the words it was unsure of, plays them, and learns the right spelling for the meetings to come.</p>
+      </description>
+    </release>
     <release version="0.11.2" date="2026-09-29">
       <description>
         <p>A microphone or computer sound that stops coming in during a recording, as when a headset is connected in the middle of a call, is picked up again within seconds.</p>

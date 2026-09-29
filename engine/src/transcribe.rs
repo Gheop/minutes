@@ -63,8 +63,19 @@ pub struct Segment {
     pub text: String,
 }
 
+/// A word as whisper heard it: when, on the recording's timeline, and how
+/// sure it was of it (the lowest probability of its tokens).
+#[derive(Debug, Clone)]
+pub struct Heard {
+    pub text: String,
+    pub at_ms: i64,
+    pub sure: f32,
+}
+
 pub struct Transcript {
     pub segments: Vec<Segment>,
+    /// Every word, for telling which ones whisper was unsure of.
+    pub heard: Vec<Heard>,
     /// The language used or detected, as a whisper code.
     pub language: String,
     pub duration_secs: i64,
@@ -743,8 +754,8 @@ pub(crate) fn preview_pass(
         &quiet,
         abort,
     )
-    .map(|(lines, _)| {
-        lines
+    .map(|pass| {
+        pass.lines
             .into_iter()
             .map(|l| Segment {
                 start_ms: l.start_ms + shift,
@@ -800,6 +811,7 @@ pub fn transcribe(
 ) -> Result<Transcript, String> {
     let duration_secs = (mic.len().max(computer.len()) / WHISPER_RATE) as i64;
     let empty = |language: &str| Transcript {
+        heard: Vec::new(),
         segments: Vec::new(),
         language: if language == "auto" {
             "unknown".into()
@@ -874,13 +886,18 @@ pub fn transcribe(
     let mut language = language.to_owned();
     let mut detected = None;
     let mut segments = Vec::new();
+    let mut heard = Vec::new();
     let mut done = 0.0;
     for (track, regions, speakers) in &sides {
         if regions.is_empty() {
             continue;
         }
         let share = length(regions) as f64 / total;
-        let (lines, found) = side_pass(
+        let SidePass {
+            lines,
+            detected: found,
+            heard: words,
+        } = side_pass(
             &context,
             track,
             regions,
@@ -900,11 +917,13 @@ pub fn transcribe(
             detected = Some(found);
         }
         segments.extend(lines);
+        heard.extend(words);
         done += share;
     }
     emit(events, Event::Progress(1.0));
     Ok(Transcript {
         segments: crate::glossary::apply(interleave(drop_hallucinations(segments))),
+        heard,
         language: if language == "auto" {
             detected.unwrap_or_else(|| "unknown".into())
         } else {
@@ -1087,6 +1106,7 @@ pub fn transcribe_single(
 ) -> Result<Transcript, String> {
     let duration_secs = (track.len() / WHISPER_RATE) as i64;
     let empty = || Transcript {
+        heard: Vec::new(),
         segments: Vec::new(),
         language: if language == "auto" {
             "unknown".into()
@@ -1133,7 +1153,11 @@ fn whisper_pass(
     abort: &Abort,
 ) -> Result<Transcript, String> {
     let context = load_whisper(events, abort)?;
-    let (segments, detected) = side_pass(
+    let SidePass {
+        lines: segments,
+        detected,
+        heard,
+    } = side_pass(
         &context,
         mixed,
         regions,
@@ -1149,6 +1173,7 @@ fn whisper_pass(
     emit(events, Event::Progress(1.0));
     Ok(Transcript {
         segments: crate::glossary::apply(drop_hallucinations(segments)),
+        heard,
         language: if language == "auto" {
             detected.unwrap_or_else(|| "unknown".into())
         } else {
@@ -1197,16 +1222,33 @@ fn side_pass(
     fitted: bool,
     events: &Events,
     abort: &Abort,
-) -> Result<(Vec<Segment>, Option<String>), String> {
+) -> Result<SidePass, String> {
     let glued = Glued::new(track, regions);
     emit(events, Event::Stage("Transcribing".into()));
     let (words, detected) = run_whisper(
         context, &glued, speakers, language, earlier, fitted, progress, events, abort,
     )?;
-    Ok((
-        phrases(&words, &glued, speakers, track, paragraphs),
+    let heard = words
+        .iter()
+        .map(|w| Heard {
+            text: w.text.clone(),
+            at_ms: glued.locate(w.start_ms).0,
+            sure: w.sure,
+        })
+        .collect();
+    Ok(SidePass {
+        lines: phrases(&words, &glued, speakers, track, paragraphs),
         detected,
-    ))
+        heard,
+    })
+}
+
+/// What whisper gives for one side: its lines, the language it detected, and
+/// every word with how sure it was of it.
+struct SidePass {
+    lines: Vec<Segment>,
+    detected: Option<String>,
+    heard: Vec<Heard>,
 }
 
 /// A word with its times in the glued buffer, and how sure whisper was that
@@ -1218,6 +1260,8 @@ struct Word {
     no_speech: f32,
     /// Index of the whisper segment it came from.
     segment: usize,
+    /// The lowest probability whisper gave one of its tokens.
+    sure: f32,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1331,9 +1375,9 @@ fn run_whisper(
     for (index, segment) in state.as_iter().enumerate() {
         let no_speech = segment.no_speech_probability();
         // Bytes first: a character can be split over two tokens.
-        let mut current: Option<(Vec<u8>, i64, i64)> = None;
-        let flush = |current: &mut Option<(Vec<u8>, i64, i64)>, words: &mut Vec<Word>| {
-            if let Some((bytes, start_ms, end_ms)) = current.take() {
+        let mut current: Option<(Vec<u8>, i64, i64, f32)> = None;
+        let flush = |current: &mut Option<(Vec<u8>, i64, i64, f32)>, words: &mut Vec<Word>| {
+            if let Some((bytes, start_ms, end_ms, sure)) = current.take() {
                 let text = String::from_utf8_lossy(&bytes).trim().to_owned();
                 if !text.is_empty() {
                     words.push(Word {
@@ -1342,6 +1386,7 @@ fn run_whisper(
                         end_ms,
                         no_speech,
                         segment: index,
+                        sure,
                     });
                 }
             }
@@ -1364,13 +1409,14 @@ fn run_whisper(
                 (data.t0 * 10, data.t1 * 10)
             };
             match current.as_mut() {
-                Some((word, _, end)) if !bytes.starts_with(b" ") => {
+                Some((word, _, end, sure)) if !bytes.starts_with(b" ") => {
                     word.extend_from_slice(bytes);
                     *end = t1.max(*end);
+                    *sure = sure.min(data.p);
                 }
                 _ => {
                     flush(&mut current, &mut words);
-                    current = Some((bytes.to_vec(), t0, t1));
+                    current = Some((bytes.to_vec(), t0, t1, data.p));
                 }
             }
         }

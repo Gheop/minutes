@@ -51,6 +51,24 @@ pub fn apply(mut segments: Vec<Segment>) -> Vec<Segment> {
     segments
 }
 
+/// `wrong` made `right` in the text of a transcript's lines, leaving the
+/// title, the times and the names alone.
+pub fn fix_markdown(markdown: &str, wrong: &str, right: &str) -> String {
+    let mut out: Vec<String> = markdown
+        .lines()
+        .map(|line| match line.split_once(":** ") {
+            Some((head, text)) if line.starts_with("**[") => {
+                format!("{head}:** {}", replace_words(text, wrong, right))
+            }
+            _ => line.to_owned(),
+        })
+        .collect();
+    if markdown.ends_with('\n') {
+        out.push(String::new());
+    }
+    out.join("\n")
+}
+
 fn replace_words(text: &str, wrong: &str, right: &str) -> String {
     let chars: Vec<char> = text.chars().collect();
     let pattern: Vec<char> = wrong.chars().collect();
@@ -80,7 +98,16 @@ fn replace_words(text: &str, wrong: &str, right: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::replace_words;
+    use super::{fix_markdown, replace_words};
+
+    #[test]
+    fn a_fix_in_a_transcript_touches_only_what_was_said() {
+        let markdown = "# Zabix review\n\n**[00:04] Zabix Team:** On regarde Zabix.\n\n";
+        assert_eq!(
+            fix_markdown(markdown, "Zabix", "Zabbix"),
+            "# Zabix review\n\n**[00:04] Zabix Team:** On regarde Zabbix.\n\n"
+        );
+    }
 
     #[test]
     fn whole_words_only_and_any_case() {
