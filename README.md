@@ -103,6 +103,15 @@ People sharing one room system show as that one tile: the transcript then tells 
 
 A Bluetooth headset such as AirPods only gives its microphone once an app switches it to its headset profile, as Teams does when a call starts; outside a call Minutes hears nothing from it, and does not switch it itself, since that would bring your music down to phone quality.
 
+## Words to check
+
+After a meeting, Minutes may show "5 words to check" above its transcript. These are the words whisper was unsure of, or wrote several ways: names, tools, acronyms. For each, Check… shows the sentence it is in, plays the moment it was said, and asks what to do:
+
+- **Keep this spelling**, corrected if needed: the transcript is fixed now, a `fix` line catches the wrong spellings from now on, and the word joins the `prompt`, so whisper expects it in the next meetings;
+- **Set aside**: an `ignore` line, and the word is not asked about again.
+
+At most 10 words a meeting, close spellings of one word first ("Zabix", "Zabitz"), then the words whisper was least sure of. A word the dictionary does not know but whisper wrote sure of itself (Grafana, Kubernetes) is not asked: on two real meetings, right terms like these came out at 0.94 and above, the mistakes below 0.2. The dictionary comes from hunspell when it is installed (`hunspell-fr` for French); without it, only close spellings are asked about. Words the settings already have, and the names of the people in the call, are not asked either, so the list shrinks meeting after meeting.
+
 ## Call detection
 
 While Minutes runs, it looks at the PipeWire graph every three seconds. An app that both takes the microphone and plays sound for ten seconds is in a call: Teams, Meet in a browser, Zoom, without Minutes knowing any of them. A video (sound out only) or a voice memo (microphone only) is not. Minutes then shows a notification with a Record button, and reminds you to tell the others first; it never starts on its own. When the call it records ends, it stops and says so: after about fifteen seconds without the call's sound, or within two seconds of leaving a Teams call when it reads Teams (`teams_debug_port`). While Teams says you are still in the call, a call gone quiet (everyone muted, people waiting to start) is not taken for its end. Each stop Minutes decides on its own is written to the journal with its reason.
@@ -150,7 +159,7 @@ fix = "Okafur => Okafor"
 
 `model` is `large-v3-turbo` unless set. `large-v3-turbo-q5_0` is the same model in 5 bits, a third of the size (574 MB): on this laptop it made a 42-minute French hearing 6 % faster with the same text, but a 17-minute English meeting 10 % slower, as whisper had to try hard passages again more often; worth it mostly when the GPU is short of memory. `large-v3-turbo-q8_0` (874 MB) lost a passage once in the tests. `tiny` to `large-v3` are the other models whisper.cpp offers.
 
-`prompt` tells whisper the names and words to expect, for the whole recording: on a French meeting it took misspelled work terms from 13 to 2 in 74 minutes. A word it still gets wrong needs a `fix` line, which replaces it in the finished transcript. Both stay on your computer, in your config.
+`prompt` tells whisper the names and words to expect, for the whole recording: on a French meeting it took misspelled work terms from 13 to 2 in 74 minutes. A word it still gets wrong needs a `fix` line, which replaces it in the finished transcript. Both stay on your computer, in your config, and grow as you answer the words to check after a meeting. `ignore = "word"` lines are the words set aside there.
 
 ## License
 
