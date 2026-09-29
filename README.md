@@ -158,6 +158,10 @@ MIT, like the project it comes from. See [LICENSE](LICENSE).
 
 ## Changelog
 
+### v0.11.2 — A headset connected mid-call (2026-09-29)
+
+- When the microphone or the computer sound sends nothing for 5 s during a recording, Minutes listens to it again, on the device in use now: connecting AirPods after the call started had frozen the computer sound, and the live preview with it. The gap is filled with silence, so both tracks stay in step, and the journal says so
+
 ### v0.11.1 — No meeting written over (2026-09-28)
 
 - Two recordings started in the same minute with the same title each keep their folder: the second one is named "… 2" instead of replacing the first

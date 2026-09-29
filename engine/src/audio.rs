@@ -19,6 +19,10 @@ const BYTES_PER_SEC: u64 = RATE as u64 * 2 * CHANNELS as u64;
 /// How far behind the clock a track may fall before silence fills the gap:
 /// parec delivers in small bursts, which is not a gap.
 const GAP_TOLERANCE: u64 = BYTES_PER_SEC / 2;
+/// While recording, a parec that has sent nothing for this long is restarted.
+const STALL: Duration = Duration::from_secs(5);
+/// And not more often than this, for a device that really sends nothing.
+const RESTART_EVERY: Duration = Duration::from_secs(10);
 /// Three seconds of 20 ms peaks.
 pub const HISTORY: usize = 150;
 const FLOOR_DB: f64 = -60.0;
@@ -39,6 +43,10 @@ struct Inner {
     clock: Option<TrackClock>,
     /// When sound last arrived from the device.
     last_data: Instant,
+    /// When parec was last restarted for sending nothing, and whether it was
+    /// during this recording.
+    restarted_at: Option<Instant>,
+    restarted: bool,
 }
 
 /// The time a recording has run, pauses left out, and what the track holds.
@@ -107,6 +115,8 @@ impl Source {
             pid: None,
             clock: None,
             last_data: Instant::now(),
+            restarted_at: None,
+            restarted: false,
         }));
         let shared = inner.clone();
         thread::spawn(move || {
@@ -114,6 +124,40 @@ impl Source {
                 capture(device, &shared);
                 // parec exits when the device goes away; try again.
                 thread::sleep(Duration::from_secs(1));
+            }
+        });
+        // A parec can also stall with its device still there: seen with a
+        // headset connected in the middle of a call, the stream PipeWire
+        // moved to it sending nothing more. While recording, one silent for
+        // STALL is stopped, so the loop above starts it again; the clock
+        // fills the gap with silence.
+        let watched = inner.clone();
+        thread::spawn(move || {
+            loop {
+                thread::sleep(Duration::from_secs(1));
+                let mut inner = watched.lock().unwrap();
+                if inner.stopped {
+                    return;
+                }
+                let due = inner
+                    .restarted_at
+                    .is_none_or(|at| at.elapsed() >= RESTART_EVERY);
+                if inner.clock.is_some() && inner.last_data.elapsed() >= STALL && due {
+                    let Some(pid) = inner.pid.take() else {
+                        continue;
+                    };
+                    // SIGKILL: a stalled process may never get to a SIGTERM.
+                    // SAFETY: kill only sends a signal; a pid that has gone is harmless.
+                    unsafe { libc::kill(pid as libc::pid_t, libc::SIGKILL) };
+                    inner.restarted_at = Some(Instant::now());
+                    if !inner.restarted {
+                        inner.restarted = true;
+                        crate::warn(format!(
+                            "{device} sent nothing for {} s while recording: listening again",
+                            STALL.as_secs()
+                        ));
+                    }
+                }
             }
         });
         Source { inner }
@@ -138,6 +182,7 @@ impl Source {
         inner.file = Some(file);
         inner.paused = false;
         inner.clock = Some(TrackClock::new());
+        inner.restarted = false;
         Ok(())
     }
 
