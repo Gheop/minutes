@@ -9,13 +9,14 @@ use std::time::{Duration, Instant};
 
 use adw::prelude::*;
 use adw::subclass::prelude::*;
-use gettextrs::gettext;
+use gettextrs::{gettext, ngettext};
 use gtk::{gio, glib};
 use minutes_engine::audio::{self, Source};
 use minutes_engine::calls::{self, Change, Tracker};
 use minutes_engine::export::Format;
 use minutes_engine::live::{Preview, Update};
 use minutes_engine::meeting;
+use minutes_engine::review;
 use minutes_engine::session::{self, Note};
 use minutes_engine::teams;
 use minutes_engine::transcribe::{self, Abort, CANCELLED, Event, LANGUAGES, Segment, Transcript};
@@ -82,6 +83,8 @@ mod imp {
         #[template_child]
         pub recovery_banner: TemplateChild<adw::Banner>,
         #[template_child]
+        pub review_banner: TemplateChild<adw::Banner>,
+        #[template_child]
         pub pages: TemplateChild<gtk::Stack>,
         #[template_child]
         pub title_row: TemplateChild<adw::EntryRow>,
@@ -128,6 +131,10 @@ mod imp {
         pub progress_events: RefCell<Option<async_channel::Sender<Event>>>,
         /// The transcript on screen, for Copy.
         pub markdown: RefCell<String>,
+        /// The folder of the meeting on screen.
+        pub shown: RefCell<Option<PathBuf>>,
+        /// What plays a word being checked.
+        pub player: RefCell<Option<gtk::MediaFile>>,
         /// Calls seen in the PipeWire graph, to offer recording them.
         pub calls: RefCell<Tracker>,
         /// The preview written while recording, and its lines so far.
@@ -231,6 +238,7 @@ impl MinutesWindow {
             action("mute-mic", Self::toggle_mute),
             action("recover", Self::ask_recovery),
             action("open-preview", Self::open_preview),
+            action("review", Self::review_words),
         ]);
         self.set_busy(false);
 
@@ -450,6 +458,8 @@ impl MinutesWindow {
 
     fn show_ready(&self) {
         let imp = self.imp();
+        imp.shown.borrow_mut().take();
+        imp.review_banner.set_revealed(false);
         imp.pages.set_visible_child_name("ready");
         imp.content_page.set_title(&gettext("New Recording"));
         imp.copy_button.set_visible(false);
@@ -918,13 +928,204 @@ impl MinutesWindow {
             ));
         }
         *imp.markdown.borrow_mut() = markdown;
+        *imp.shown.borrow_mut() = Some(dir.clone());
+        self.update_review_banner();
         imp.content_page.set_title(&manifest.title);
         imp.copy_button.set_visible(true);
         imp.pages.set_visible_child_name("transcript");
         imp.split_view.set_show_content(true);
     }
 
-    /// A side's label as the preview shows it: the names Teams gave, when it did.
+    /// Offers to check the words Minutes was unsure of in the meeting shown.
+    fn update_review_banner(&self) {
+        let imp = self.imp();
+        let count = imp
+            .shown
+            .borrow()
+            .as_deref()
+            .map_or(0, |dir| review::load(dir).len());
+        if count > 0 {
+            imp.review_banner.set_title(
+                &ngettext("%d word to check", "%d words to check", count as u32)
+                    .replace("%d", &count.to_string()),
+            );
+        }
+        imp.review_banner.set_revealed(count > 0);
+    }
+
+    /// The words of the meeting shown to check: each with the line it is in,
+    /// a way to hear it, and a spelling to keep or a word to set aside.
+    fn review_words(&self) {
+        let Some(dir) = self.imp().shown.borrow().clone() else {
+            return;
+        };
+        let doubts = review::load(&dir);
+        if doubts.is_empty() {
+            return;
+        }
+        let page = adw::PreferencesPage::new();
+        let intro = adw::PreferencesGroup::builder()
+            .description(gettext(
+                "Whisper was unsure of these words, or wrote them several ways. What you keep is corrected here and goes to your settings, so the next meetings get it right; what you set aside is not asked again.",
+            ))
+            .build();
+        page.add(&intro);
+        for doubt in doubts {
+            page.add(&self.review_group(&dir, &page, doubt));
+        }
+        let toolbar = adw::ToolbarView::new();
+        toolbar.add_top_bar(&adw::HeaderBar::new());
+        toolbar.set_content(Some(&page));
+        let dialog = adw::Dialog::builder()
+            .title(gettext("Words to Check"))
+            .content_width(560)
+            .content_height(640)
+            .child(&toolbar)
+            .build();
+        let weak = self.downgrade();
+        dialog.connect_closed(move |_| {
+            if let Some(win) = weak.upgrade()
+                && let Some(player) = win.imp().player.borrow_mut().take()
+            {
+                player.pause();
+            }
+        });
+        dialog.present(Some(self));
+    }
+
+    fn review_group(
+        &self,
+        dir: &Path,
+        page: &adw::PreferencesPage,
+        doubt: review::Doubt,
+    ) -> adw::PreferencesGroup {
+        let group = adw::PreferencesGroup::builder()
+            .title(glib::markup_escape_text(&doubt.spellings.join(", ")).as_str())
+            .description(
+                glib::markup_escape_text(&format!(
+                    "{} · « {} »",
+                    clock((doubt.at_ms / 1000).max(0) as u64),
+                    doubt.line
+                ))
+                .as_str(),
+            )
+            .build();
+        let entry = adw::EntryRow::builder()
+            .title(gettext("Spelling"))
+            .text(doubt.spellings[0].as_str())
+            .build();
+        let button = |icon: &str, tip: String| {
+            gtk::Button::builder()
+                .icon_name(icon)
+                .tooltip_text(tip)
+                .valign(gtk::Align::Center)
+                .css_classes(["flat"])
+                .build()
+        };
+        let listen = button("media-playback-start-symbolic", gettext("Listen"));
+        let keep = button("object-select-symbolic", gettext("Keep This Spelling"));
+        let aside = button("edit-delete-symbolic", gettext("Set Aside"));
+        entry.add_suffix(&listen);
+        entry.add_suffix(&keep);
+        entry.add_suffix(&aside);
+        group.add(&entry);
+
+        let weak = self.downgrade();
+        let (at_ms, folder) = (doubt.at_ms, dir.to_path_buf());
+        listen.connect_clicked(move |_| {
+            if let Some(win) = weak.upgrade() {
+                win.play_at(&folder, at_ms);
+            }
+        });
+        let weak = self.downgrade();
+        let (folder, spellings) = (dir.to_path_buf(), doubt.spellings.clone());
+        let (page_ref, group_ref, entry_ref) = (page.clone(), group.clone(), entry.clone());
+        keep.connect_clicked(move |_| {
+            let word = entry_ref.text().trim().to_owned();
+            if word.is_empty() {
+                return;
+            }
+            if let Some(win) = weak.upgrade() {
+                win.keep_word(&folder, &spellings, &word);
+                page_ref.remove(&group_ref);
+            }
+        });
+        let weak = self.downgrade();
+        let (folder, spellings) = (dir.to_path_buf(), doubt.spellings);
+        let (page_ref, group_ref) = (page.clone(), group.clone());
+        aside.connect_clicked(move |_| {
+            if let Some(win) = weak.upgrade() {
+                win.set_aside(&folder, &spellings);
+                page_ref.remove(&group_ref);
+            }
+        });
+        group
+    }
+
+    /// Plays the meeting from a second before `at_ms`, for five seconds.
+    fn play_at(&self, dir: &Path, at_ms: i64) {
+        let audio = [dir.join("audio.ogg"), dir.join(".tracks/computer.ogg")]
+            .into_iter()
+            .find(|path| path.exists());
+        let Some(audio) = audio else {
+            self.toast(&gettext("This meeting has no audio to play"));
+            return;
+        };
+        if let Some(old) = self.imp().player.borrow_mut().take() {
+            old.pause();
+        }
+        let player = gtk::MediaFile::for_filename(&audio);
+        let from = (at_ms - 1000).max(0) * 1000;
+        // Seeking works once the file is ready.
+        player.connect_prepared_notify(move |player| {
+            if player.is_prepared() {
+                player.seek(from);
+                player.play();
+            }
+        });
+        let weak = player.downgrade();
+        glib::timeout_add_local_once(Duration::from_secs(6), move || {
+            if let Some(player) = weak.upgrade() {
+                player.pause();
+            }
+        });
+        *self.imp().player.borrow_mut() = Some(player);
+    }
+
+    /// Keeps `word` as the spelling of what was written `spellings`: in this
+    /// transcript now, and for whisper and the fixes of the meetings to come.
+    fn keep_word(&self, dir: &Path, spellings: &[String], word: &str) {
+        let transcript = dir.join("transcript.md");
+        let mut markdown = std::fs::read_to_string(&transcript).unwrap_or_default();
+        for spelling in spellings {
+            markdown = minutes_engine::glossary::fix_markdown(&markdown, spelling, word);
+        }
+        let written = std::fs::write(&transcript, &markdown)
+            .and_then(|()| minutes_engine::models::learn(word))
+            .and_then(|()| {
+                spellings
+                    .iter()
+                    .try_for_each(|spelling| minutes_engine::models::add_fix(spelling, word))
+            })
+            .and_then(|()| review::settle(dir, &spellings[0]));
+        if let Err(e) = written {
+            self.toast(&format!("{}: {e}", gettext("Could not keep the word")));
+        }
+        self.show_meeting(dir);
+    }
+
+    /// Sets the word written `spellings` aside: it is not asked about again.
+    fn set_aside(&self, dir: &Path, spellings: &[String]) {
+        let written = spellings
+            .iter()
+            .try_for_each(|spelling| minutes_engine::models::ignore(spelling))
+            .and_then(|()| review::settle(dir, &spellings[0]));
+        if let Err(e) = written {
+            self.toast(&format!("{}: {e}", gettext("Could not set the word aside")));
+        }
+        self.update_review_banner();
+    }
+
     /// The name of a line of the preview said from `start_ms` to `end_ms`:
     /// on the other side, the person Teams showed speaking meanwhile, when
     /// there was one; else as `side_name`.
@@ -978,6 +1179,7 @@ impl MinutesWindow {
             .map_or(0, |r| r.elapsed().as_millis() as i64)
     }
 
+    /// A side's label as the preview shows it: the names Teams gave, when it did.
     fn side_name(&self, label: &str) -> String {
         let seen = self.imp().teams.borrow();
         match label {
@@ -1231,6 +1433,7 @@ impl MinutesWindow {
             .collect();
         let preview = Transcript {
             segments: lines,
+            heard: Vec::new(),
             language: note.language.clone(),
             duration_secs: 0,
         };

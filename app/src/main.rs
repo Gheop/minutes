@@ -108,6 +108,15 @@ fn main() -> glib::ExitCode {
         let window = window.upcast::<gtk::Window>();
         window.present();
         if let Ok(path) = std::env::var("MINUTES_SCREENSHOT") {
+            // An action to show first, such as `win.review` for the words to check.
+            if let Ok(action) = std::env::var("MINUTES_SCREENSHOT_ACTION") {
+                let window = window.clone();
+                glib::timeout_add_local_once(std::time::Duration::from_millis(800), move || {
+                    if let Err(e) = WidgetExt::activate_action(&window, &action, None) {
+                        eprintln!("minutes: {action}: {e}");
+                    }
+                });
+            }
             screenshot_and_quit(&window, PathBuf::from(path));
         }
     });
@@ -185,7 +194,13 @@ fn add_outside_actions(app: &adw::Application) {
 /// interface without looking at a screen.
 fn screenshot_and_quit(window: &gtk::Window, path: PathBuf) {
     let window = window.clone();
-    glib::timeout_add_local_once(std::time::Duration::from_millis(1500), move || {
+    // Longer with an action to show first: a dialog slides in.
+    let wait = if std::env::var_os("MINUTES_SCREENSHOT_ACTION").is_some() {
+        2500
+    } else {
+        1500
+    };
+    glib::timeout_add_local_once(std::time::Duration::from_millis(wait), move || {
         let paintable = gtk::WidgetPaintable::new(Some(&window));
         let (width, height) = (window.width(), window.height());
         let snapshot = gtk::Snapshot::new();
