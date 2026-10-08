@@ -167,6 +167,11 @@ MIT, like the project it comes from. See [LICENSE](LICENSE).
 
 ## Changelog
 
+### v0.12.1 — Faint voices kept (2026-10-08)
+
+- A faint but clear voice on the other side of a call, or in an imported file, was dropped whole: tracks speaking under a set level were taken for noise. Speech is now told from noise by how far it stands above its own pauses, and brought up as far as it needs. On 120 French sentences, 2 dropped before are transcribed and the error rate went from 8.9 % to 7.1 %
+- Your own microphone keeps the earlier rule: bringing it up that far would bring up the other people's voices that leak into it too
+
 ### v0.12.0 — Words to check (2026-09-29)
 
 - After a meeting, "N words to check" above the transcript: the words whisper was unsure of or wrote several ways, at most 10, each with its sentence and a button to hear it

@@ -217,15 +217,21 @@ fn is_silent(samples: &[f32]) -> bool {
     samples.iter().fold(0.0f32, |m, s| m.max(s.abs())) < 0.003
 }
 
-/// How loud a track is while something is said: the 95th percentile of its
-/// 30 ms frame levels, so pauses do not drag it down.
-fn active_level(samples: &[f32]) -> f32 {
-    let mut levels: Vec<f32> = samples.chunks(WHISPER_RATE * 30 / 1000).map(rms).collect();
+/// How loud a track is while something is said, and its floor: the 95th and
+/// 10th percentiles of its 30 ms frame levels, so pauses do not drag the first
+/// down. Frames of digital silence (a muted microphone writes zeros) count for
+/// neither.
+fn active_level(samples: &[f32]) -> (f32, f32) {
+    let mut levels: Vec<f32> = samples
+        .chunks(WHISPER_RATE * 30 / 1000)
+        .map(rms)
+        .filter(|&level| level > 1e-6)
+        .collect();
     if levels.is_empty() {
-        return 0.0;
+        return (0.0, 0.0);
     }
     levels.sort_by(f32::total_cmp);
-    levels[levels.len() * 95 / 100]
+    (levels[levels.len() * 95 / 100], levels[levels.len() / 10])
 }
 
 /// Leaves everything below 0.8 alone and bends what is above it towards 1.0.
@@ -238,22 +244,35 @@ fn soft_clip(x: f32) -> f32 {
     }
 }
 
-/// Mixes the two tracks for whisper. Each is brought to a similar speaking
-/// level first, so a quiet mic is not drowned by loud computer audio; a track
-/// that is only noise is left as it is rather than boosted.
-fn mix(mic: &[f32], computer: &[f32]) -> Vec<f32> {
-    let gain = |track: &[f32]| gain_for(active_level(track), is_silent(track));
-    mix_with(mic, gain(mic), computer, gain(computer))
+/// A track brought to the speaking level whisper gets (see `track_gain`).
+fn level(track: &[f32], faint_speech: bool) -> Vec<f32> {
+    mix_with(track, track_gain(track, faint_speech), &[], 1.0)
 }
 
-/// The gain that brings a track speaking at `level` to the level `mix` aims at.
-fn gain_for(level: f32, silent: bool) -> f32 {
+/// The gain that brings `track` to a similar speaking level as the others,
+/// so a quiet side is not drowned by a loud one; a track that is only noise
+/// is left as it is rather than boosted. `faint_speech`: see `gain_for`.
+fn track_gain(track: &[f32], faint_speech: bool) -> f32 {
+    let (level, floor) = active_level(track);
+    gain_for(level, floor, is_silent(track), faint_speech)
+}
+
+/// The gain that brings a track speaking at `level`, above a floor at
+/// `floor`, to the level whisper gets. Up to 8 times, and none below 0.003,
+/// where a track is taken for noise. With `faint_speech`, a track that stands
+/// far above its own floor (the pauses between words, where a hiss or a hum is
+/// flat) is speech however faint, and is brought up as far as it needs, 64
+/// times at most: a clear voice at -63 dB was dropped whole without it. Not
+/// for your microphone: the other people's voices that leak into it would be
+/// brought up with yours and taken for you.
+fn gain_for(level: f32, floor: f32, silent: bool, faint_speech: bool) -> f32 {
     const TARGET: f32 = 0.1;
-    if silent || level < 0.003 {
-        1.0
-    } else {
-        (TARGET / level).clamp(0.25, 8.0)
+    let speech = faint_speech && level >= 8.0 * floor.max(1e-6);
+    if silent || (level < 0.003 && !speech) {
+        return 1.0;
     }
+    let most = if speech { 64.0 } else { 8.0 };
+    (TARGET / level.max(1e-6)).clamp(0.25, most)
 }
 
 fn mix_with(mic: &[f32], mic_gain: f32, computer: &[f32], computer_gain: f32) -> Vec<f32> {
@@ -668,8 +687,17 @@ impl Levels {
     }
 
     /// The gain `mix` would give this side.
-    fn gain(&self) -> f32 {
-        gain_for(self.percentile(95), self.peak < 0.003)
+    fn gain(&self, faint_speech: bool) -> f32 {
+        // As `active_level` measures it, digital silence left out.
+        let mut levels: Vec<f32> = self.frames.iter().copied().filter(|&l| l > 1e-6).collect();
+        levels.sort_by(f32::total_cmp);
+        let at = |per_cent: usize| {
+            levels
+                .get(levels.len() * per_cent / 100)
+                .copied()
+                .unwrap_or(0.0)
+        };
+        gain_for(at(95), at(10), self.peak < 0.003, faint_speech)
     }
 }
 
@@ -684,7 +712,7 @@ pub(crate) fn preview_regions(
     from: usize,
     levels: &[Levels; 2],
 ) -> (Vec<f32>, Vec<Region>, Vec<f32>, Vec<Region>) {
-    let gains = [levels[0].gain(), levels[1].gain()];
+    let gains = [levels[0].gain(false), levels[1].gain(true)];
     let (mic, computer) = (
         mix_with(mic, gains[0], &[], 1.0),
         mix_with(computer, gains[1], &[], 1.0),
@@ -828,7 +856,7 @@ pub fn transcribe(
     // Each side goes through whisper on its own: whisper follows one voice at
     // a time, so two people talking at once, or a song under someone, would
     // otherwise lose the quieter one. The side of a line is then its track.
-    let (mic, computer) = (mix(mic, &[]), mix(computer, &[]));
+    let (mic, computer) = (level(mic, false), level(computer, true));
     let mic_regions = own_speech_regions(&mic, &computer);
     let computer_regions = speech_regions(&[&computer], computer.len());
     if mic_regions.is_empty() && computer_regions.is_empty() {
@@ -1119,8 +1147,12 @@ pub fn transcribe_single(
         emit(events, Event::Progress(1.0));
         return Ok(empty());
     }
-    let level = mix(track, &[]);
-    let regions = speech_regions(&[track], level.len());
+    let gain = track_gain(track, true);
+    let level = mix_with(track, gain, &[], 1.0);
+    // On the track as brought up, when it was: on a faint file the raw one
+    // stays under the threshold of speech except at its loudest. A loud one
+    // turned down would lose its quiet words the same way.
+    let regions = speech_regions(&[if gain > 1.0 { &level } else { track }], level.len());
     if regions.is_empty() {
         emit(events, Event::Progress(1.0));
         return Ok(empty());
@@ -1879,7 +1911,7 @@ mod tests {
         let (mic, computer) = (a_side(1), a_side(2));
         let levels = [levels_of(&mic), levels_of(&computer)];
         let (_, mic_regions, _, computer_regions) = preview_regions(&mic, &computer, 0, &levels);
-        let levelled = (mix(&mic, &[]), mix(&computer, &[]));
+        let levelled = (level(&mic, false), level(&computer, true));
         assert!(mic_regions.len() > 5);
         assert_eq!(
             ends(&mic_regions),
@@ -1975,6 +2007,36 @@ mod tests {
             hex(&sha2::Sha256::digest(b"abc")),
             "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
         );
+    }
+
+    #[test]
+    fn faint_speech_is_brought_up_and_a_flat_hiss_is_not() {
+        let tone = |amplitude: f32, seconds: usize| -> Vec<f32> {
+            (0..WHISPER_RATE * seconds)
+                .map(|i| amplitude * (i as f32 * 0.05).sin())
+                .collect()
+        };
+        // A faint voice, words peaking at 0.004 (-48 dB), pauses twenty times
+        // quieter: under the level the old rule boosted.
+        let mut faint = Vec::new();
+        for _ in 0..5 {
+            faint.extend(tone(0.004, 1));
+            faint.extend(tone(0.0002, 1));
+        }
+        let (level, floor) = active_level(&faint);
+        let gain = gain_for(level, floor, is_silent(&faint), true);
+        assert!(gain > 30.0, "faint speech brought up: {gain}");
+        // A hiss as faint and as steady: left alone.
+        let hiss = tone(0.004, 10);
+        let (level, floor) = active_level(&hiss);
+        assert_eq!(gain_for(level, floor, is_silent(&hiss), true), 1.0);
+        // Your microphone is not brought up that far.
+        let (level, floor) = active_level(&faint);
+        assert_eq!(gain_for(level, floor, is_silent(&faint), false), 1.0);
+        // A muted microphone writes zeros: they are not the floor.
+        let mut muted = vec![0.0; WHISPER_RATE * 9];
+        muted.extend(tone(0.0015, 1));
+        assert_eq!(active_level(&muted).1, active_level(&tone(0.0015, 1)).1);
     }
 
     #[test]
