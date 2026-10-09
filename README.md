@@ -50,11 +50,13 @@ Prefer Vulkan, also on an NVIDIA card. On an RTX 2050 it transcribes as fast as 
 
 ## Preview during the call
 
-While Minutes records, it writes a preview of the transcript as the call goes on: in the window under the meters, and in the top bar when you click the indicator. What someone is still saying shows greyed, redrawn every second, and turns into a line of its own once they pause. Replaying a two-minute call at its own pace, the grey draft ran a second behind the speech at most (90th percentile), and the finished lines 2.8 s (median).
+While Minutes records, it writes a preview of the transcript as the call goes on: in the window under the meters, and in the top bar when you click the indicator. What someone is still saying shows greyed, redrawn every second, and turns into a line of its own once they pause. Replaying a two-minute call at its own pace, the grey draft ran 1.7 to 1.9 s behind the speech at most (90th percentile), and the finished lines 3.2 to 3.5 s (median, three runs).
 
 It is rougher than the transcript made at the end: it finds speech on what has been heard so far, does not tell voices on one side apart, and gives whisper a window fitted to a few seconds of speech with one second try instead of four when a piece decodes badly. A line said again word for word among the last few on its side is dropped, since whisper sometimes gives back the text before it. Why a live transcript as good as the final one was not reached is measured on the `live-sim` branch, in `bench/LIVE.md`.
 
-When you stop, the preview is saved at once as `transcript-preview.md` in the meeting folder, to copy or open while the real transcript is made, from the whole recording as before. That one replaces nothing: the preview stays in the folder.
+When you stop, the preview is saved at once as `transcript-preview.md` in the meeting folder, to copy or open while the real transcript is made. That one replaces nothing: the preview stays in the folder.
+
+The real transcript is mostly made during the call too. When the preview runs the transcript's own model, the same thread hands whisper each side's finished stretches, 20 s of speech at a time, with the settings of the transcript after the call and with word times aligned, and keeps the words in `live.json` in the recording's folder. After Stop only the last stretches are left, then the voices are told apart over the whole call as before. Replaying two recorded meetings of 57 and 63 minutes, the transcript was ready 31 and 34 s after Stop instead of 312 and 302 s; whisper worked 348 and 289 s in all during each call, a few seconds every half minute. The gains and noise floors are those known when each batch goes, so the words differ a little from a transcript made at the end: on the second meeting 5 % of them, on the first 24 %, mostly "euh", "bah" and "ouais" kept and commas placed differently, and a sentence said twice that the transcript made at the end wrote once. If that work fails or falls behind, the transcript after Stop does the rest from the recording, as before.
 
 It needs whisper on a GPU (the `cuda` or `vulkan` build). On the CPU the usual model is slower than the call, so there is no preview unless you set a smaller model for it:
 
@@ -166,6 +168,12 @@ fix = "Okafur => Okafor"
 MIT, like the project it comes from. See [LICENSE](LICENSE).
 
 ## Changelog
+
+### v0.13.0 — The transcript ready after the call (2026-10-09)
+
+- The call is transcribed as it goes on, with the transcript's own settings: on two recorded meetings of about an hour, the transcript was ready about 30 s after Stop instead of 5 minutes
+- The preview's lines come about half a second later than before (3.2 to 3.5 s behind the call, median), the price of aligning word times as the transcript needs them; the grey draft is as quick as before
+- Only with the transcript's own model in the preview: with a smaller `live_model`, or on the CPU, the transcript is made after the call as before
 
 ### v0.12.1 — Faint voices kept (2026-10-08)
 
@@ -297,3 +305,9 @@ MIT, like the project it comes from. See [LICENSE](LICENSE).
 - The whisper model loads while the speakers are found
 - Call detection: an app that takes the microphone and plays sound is a call; Minutes offers to record it, and to stop when it ends
 - No more "unknown language" warning when nothing was said
+
+## README changelog
+
+| Version | Date       | Changes                                                       |
+|---------|------------|---------------------------------------------------------------|
+| 1.0.0   | 2026-10-09 | Add the transcript made during the call and this revision log |

@@ -245,7 +245,16 @@ pub fn transcribe_into(
     };
     let mic = crate::transcribe::load_track(&mic_path)?;
     let computer = crate::transcribe::load_track(&computer_path)?;
-    let transcript = crate::transcribe::transcribe(&mic, &computer, language, events, abort)?;
+    // The other side as transcribed during the call, when it was.
+    let ahead = crate::live::ahead_in(tracks, language);
+    let transcript = crate::transcribe::transcribe_with(
+        &mic,
+        &computer,
+        language,
+        ahead.as_ref(),
+        events,
+        abort,
+    )?;
     let date = glib::DateTime::from_unix_local(manifest.started_at)
         .and_then(|t| t.format("%Y-%m-%d %H:%M"))
         .map(|s| s.to_string())
