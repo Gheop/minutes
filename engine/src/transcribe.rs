@@ -794,6 +794,248 @@ pub(crate) fn preview_pass(
     })
 }
 
+/// A call transcribed while it goes on, the way the transcript after the call
+/// does it, so that after Stop only the last stretches are left to
+/// transcribe. For each side (you, then the other side), its words up to a
+/// sample of the recording.
+///
+/// The gains and noise floors are those known when each batch goes: on two
+/// recorded meetings, 6 % of the other side's words differ from the
+/// transcript made after the call, which is no better or worse, only
+/// different.
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct Ahead {
+    sides: [AheadSide; 2],
+    /// What "auto" turned out to be.
+    detected: Option<String>,
+}
+
+#[derive(Debug, Default, Clone, PartialEq)]
+struct AheadSide {
+    done: usize,
+    words: Vec<LocatedWord>,
+}
+
+impl AheadSide {
+    /// The text so far, whisper's context for what comes next.
+    fn earlier(&self) -> String {
+        let words: Vec<&str> = self.words.iter().map(|w| w.text.as_str()).collect();
+        words.join(" ")
+    }
+
+    /// The numbers the next stretch and the next segment take.
+    fn next_numbers(&self) -> (usize, usize) {
+        self.words
+            .last()
+            .map_or((0, 0), |w| (w.region + 1, w.segment + 1))
+    }
+}
+
+impl Ahead {
+    /// A stretch is ended when this much has been heard after it.
+    const SETTLED: usize = 2 * WHISPER_RATE;
+    /// Whisper gets this much speech at a time: less loses context, and each
+    /// pass costs a 30 s window anyway.
+    const BATCH: usize = 20 * WHISPER_RATE;
+    /// Or what there is once this much is waiting, so a side that says little
+    /// does not keep the whole call in memory.
+    const LONGEST_WAIT: usize = 120 * WHISPER_RATE;
+
+    /// Where the samples of both sides are still needed from.
+    pub(crate) fn needs_from(&self) -> usize {
+        self.sides[0].done.min(self.sides[1].done) / FRAME * FRAME
+    }
+
+    /// Transcribes the stretches of each side that have ended, once there
+    /// are enough of them. `mic` and `computer` are the recording from sample
+    /// `base` (at most `needs_from`) to `heard`; `levels` know all of it.
+    /// Says whether it transcribed anything.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn step(
+        &mut self,
+        context: &WhisperContext,
+        mic: &[f32],
+        computer: &[f32],
+        base: usize,
+        heard: usize,
+        levels: &[Levels; 2],
+        language: &str,
+        abort: &Abort,
+    ) -> Result<bool, String> {
+        let mut any = false;
+        for side in 0..2 {
+            any |= self.step_side(
+                side, context, mic, computer, base, heard, levels, language, abort,
+            )?;
+        }
+        Ok(any)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn step_side(
+        &mut self,
+        side: usize,
+        context: &WhisperContext,
+        mic: &[f32],
+        computer: &[f32],
+        base: usize,
+        heard: usize,
+        levels: &[Levels; 2],
+        language: &str,
+        abort: &Abort,
+    ) -> Result<bool, String> {
+        let done = self.sides[side].done;
+        let from = done / FRAME * FRAME;
+        if from < base || heard <= from + WHISPER_RATE {
+            return Ok(false);
+        }
+        // Found as `transcribe` finds them: your stretches are those where
+        // the mic is not only the other side leaking in.
+        let gains = [levels[0].gain(false), levels[1].gain(true)];
+        let window = |track: &[f32], side: usize| {
+            mix_with(&track[from - base..heard - base], gains[side], &[], 1.0)
+        };
+        let threshold = threshold_for(levels[side].percentile(10) * gains[side]);
+        let (track, regions) = if side == 0 {
+            let (track, other) = (window(mic, 0), window(computer, 1));
+            let active = frames_above(&track, track.len().div_ceil(FRAME), threshold);
+            let regions = own_speech_in(&track, &other, active);
+            (track, regions)
+        } else {
+            let track = window(computer, 1);
+            let active = frames_above(&track, track.len().div_ceil(FRAME), threshold);
+            let regions = regions_from(&active, track.len());
+            (track, regions)
+        };
+        let regions: Vec<Region> = regions
+            .into_iter()
+            .filter(|r| from + r.start >= done)
+            .collect();
+        if regions.is_empty() {
+            // Nothing said since: no need to look back there.
+            self.sides[side].done = done.max(heard - WHISPER_RATE);
+            return Ok(false);
+        }
+        let settled: Vec<Region> = regions
+            .into_iter()
+            .filter(|r| from + r.end + Self::SETTLED <= heard)
+            .collect();
+        let speech: usize = settled.iter().map(|r| r.end - r.start).sum();
+        let Some(last) = settled
+            .last()
+            .filter(|_| speech >= Self::BATCH || heard - from >= Self::LONGEST_WAIT)
+        else {
+            return Ok(false);
+        };
+        let language = self.detected.as_deref().unwrap_or(language);
+        let label = [crate::meeting::DEFAULT_YOU, crate::meeting::DEFAULT_REMOTE][side];
+        let glued = Glued::new(&track, &settled);
+        let (words, detected) = run_whisper(
+            context,
+            &glued,
+            &Speakers::Side(label, Vec::new()),
+            language,
+            &self.sides[side].earlier(),
+            false,
+            (0.0, 1.0),
+            &async_channel::unbounded().0,
+            abort,
+        )?;
+        if language == "auto" {
+            self.detected = detected;
+        }
+        let shift = sample_to_ms(from);
+        let (region, segment) = self.sides[side].next_numbers();
+        self.sides[side].words.extend(
+            place_words(&words, &glued, region, segment)
+                .into_iter()
+                .map(|w| LocatedWord {
+                    start_ms: w.start_ms + shift,
+                    end_ms: w.end_ms + shift,
+                    onset_ms: w.onset_ms + shift,
+                    ..w
+                }),
+        );
+        self.sides[side].done = from + last.end;
+        Ok(true)
+    }
+
+    /// How far each side is.
+    #[cfg(test)]
+    pub(crate) fn summary(&self) -> String {
+        let side = |side: &AheadSide| {
+            format!(
+                "{} words up to {:.0} s",
+                side.words.len(),
+                side.done as f64 / WHISPER_RATE as f64
+            )
+        };
+        format!(
+            "you {}, the other side {}",
+            side(&self.sides[0]),
+            side(&self.sides[1])
+        )
+    }
+
+    /// For `staging/live.json`, with the model and the language it was made
+    /// with: a transcript made with others does not use it.
+    pub(crate) fn to_json(&self, model: &str, language: &str) -> serde_json::Value {
+        let side = |side: &AheadSide| {
+            serde_json::json!({
+                "done": side.done,
+                "words": side.words.iter().map(|w| serde_json::json!([
+                    w.text, w.start_ms, w.end_ms, w.region, w.onset_ms, w.segment, w.no_speech, w.sure,
+                ])).collect::<Vec<_>>(),
+            })
+        };
+        serde_json::json!({
+            "model": model,
+            "language": language,
+            "detected": self.detected,
+            "you": side(&self.sides[0]),
+            "remote": side(&self.sides[1]),
+        })
+    }
+
+    /// Read back from `to_json`, when made with `model` and `language`.
+    pub(crate) fn from_json(
+        value: &serde_json::Value,
+        model: &str,
+        language: &str,
+    ) -> Option<Ahead> {
+        if value["model"] != model || value["language"] != language {
+            return None;
+        }
+        let side = |value: &serde_json::Value| {
+            let words = value["words"]
+                .as_array()?
+                .iter()
+                .map(|w| {
+                    let int = |i: usize| w[i].as_i64();
+                    Some(LocatedWord {
+                        text: w[0].as_str()?.to_owned(),
+                        start_ms: int(1)?,
+                        end_ms: int(2)?,
+                        region: usize::try_from(int(3)?).ok()?,
+                        onset_ms: int(4)?,
+                        segment: usize::try_from(int(5)?).ok()?,
+                        no_speech: w[6].as_f64()? as f32,
+                        sure: w[7].as_f64()? as f32,
+                    })
+                })
+                .collect::<Option<Vec<_>>>()?;
+            Some(AheadSide {
+                done: usize::try_from(value["done"].as_u64()?).ok()?,
+                words,
+            })
+        };
+        Some(Ahead {
+            sides: [side(&value["you"])?, side(&value["remote"])?],
+            detected: value["detected"].as_str().map(str::to_owned),
+        })
+    }
+}
+
 /// The GPU whisper runs on: the first dedicated one. whisper.cpp counts the
 /// integrated ones too, in the order ggml lists them, and a laptop's own
 /// graphics can come first: through Vulkan, an Intel Arc before an NVIDIA
@@ -815,13 +1057,21 @@ fn gpu_device() -> i32 {
     0
 }
 
-/// The whisper model for the preview, without word alignment (it tells no
-/// voices apart), on the GPU when there is one.
-pub(crate) fn load_preview_whisper(model: &Path) -> Result<WhisperContext, String> {
+/// The whisper model for the preview, on the GPU when there is one. With
+/// `aligned`, word times are aligned as the transcript after the call needs
+/// them, for transcribing the other side as the call goes on (`Ahead`); the
+/// preview alone tells no voices apart and does without.
+pub(crate) fn load_preview_whisper(model: &Path, aligned: bool) -> Result<WhisperContext, String> {
     whisper_rs::install_logging_hooks();
     let mut params = WhisperContextParameters::default();
     params.use_gpu(cfg!(any(feature = "vulkan", feature = "cuda")));
     params.gpu_device(gpu_device());
+    if aligned && let Some(model_preset) = crate::models::dtw_preset() {
+        params.dtw_parameters(DtwParameters {
+            mode: DtwMode::ModelPreset { model_preset },
+            ..Default::default()
+        });
+    }
     WhisperContext::new_with_params(model, params)
         .map_err(|e| format!("could not load the model {}: {e}", model.display()))
 }
@@ -834,6 +1084,19 @@ pub fn transcribe(
     mic: &[f32],
     computer: &[f32],
     language: &str,
+    events: &Events,
+    abort: &Abort,
+) -> Result<Transcript, String> {
+    transcribe_with(mic, computer, language, None, events, abort)
+}
+
+/// `transcribe`, with what of the other side was transcribed during the call:
+/// only the rest goes through whisper.
+pub fn transcribe_with(
+    mic: &[f32],
+    computer: &[f32],
+    language: &str,
+    ahead: Option<&Ahead>,
     events: &Events,
     abort: &Abort,
 ) -> Result<Transcript, String> {
@@ -900,44 +1163,77 @@ pub fn transcribe(
     let (local, remote, context) = (local?, remote?, context?);
 
     let length = |regions: &[Region]| regions.iter().map(|r| r.end - r.start).sum::<usize>();
-    let total = (length(&mic_regions) + length(&computer_regions)).max(1) as f64;
+    // Of each side, only what was not transcribed during the call.
+    let left = |regions: &[Region], side: usize| match ahead {
+        Some(ahead) => left_after(regions, ahead.sides[side].done),
+        None => regions.to_vec(),
+    };
+    let (mic_left, computer_left) = (left(&mic_regions, 0), left(&computer_regions, 1));
+    let total = (length(&mic_left) + length(&computer_left)).max(1) as f64;
+    let ahead_side = |side: usize| ahead.map(|a| &a.sides[side]);
     let mut sides = [
-        (&mic, &mic_regions, Speakers::Side("You", local)),
+        (
+            &mic,
+            &mic_left,
+            Speakers::Side("You", local),
+            ahead_side(0),
+            length(&mic_regions),
+        ),
         (
             &computer,
-            &computer_regions,
+            &computer_left,
             Speakers::Side("Remote", remote),
+            ahead_side(1),
+            length(&computer_regions),
         ),
     ];
     // The side with the most sound first: with "auto" its language counts for both.
-    sides.sort_by_key(|(_, regions, _)| std::cmp::Reverse(length(regions)));
+    sides.sort_by_key(|(_, _, _, _, speech)| std::cmp::Reverse(*speech));
     let mut language = language.to_owned();
     let mut detected = None;
+    if language == "auto"
+        && let Some(found) = ahead.and_then(|a| a.detected.clone())
+    {
+        language = found.clone();
+        detected = Some(found);
+    }
     let mut segments = Vec::new();
     let mut heard = Vec::new();
     let mut done = 0.0;
-    for (track, regions, speakers) in &sides {
-        if regions.is_empty() {
-            continue;
-        }
+    for (track, regions, speakers, ahead, _) in &sides {
         let share = length(regions) as f64 / total;
+        let pass = match ahead {
+            Some(ahead) => ahead_pass(
+                &context,
+                track,
+                regions,
+                speakers,
+                ahead,
+                &language,
+                (done, done + share),
+                events,
+                abort,
+            ),
+            None if regions.is_empty() => continue,
+            None => side_pass(
+                &context,
+                track,
+                regions,
+                speakers,
+                &language,
+                (done, done + share),
+                false,
+                "",
+                false,
+                events,
+                abort,
+            ),
+        };
         let SidePass {
             lines,
             detected: found,
             heard: words,
-        } = side_pass(
-            &context,
-            track,
-            regions,
-            speakers,
-            &language,
-            (done, done + share),
-            false,
-            "",
-            false,
-            events,
-            abort,
-        )?;
+        } = pass?;
         if language == "auto"
             && let Some(found) = found
         {
@@ -1275,6 +1571,71 @@ fn side_pass(
     })
 }
 
+/// `side_pass` for a side transcribed during the call: whisper over the
+/// stretches `left` after it, then the lines of all its words.
+#[allow(clippy::too_many_arguments)]
+fn ahead_pass(
+    context: &WhisperContext,
+    track: &[f32],
+    left: &[Region],
+    speakers: &Speakers,
+    ahead: &AheadSide,
+    language: &str,
+    progress: (f64, f64),
+    events: &Events,
+    abort: &Abort,
+) -> Result<SidePass, String> {
+    let mut words = ahead.words.clone();
+    let mut detected = None;
+    if !left.is_empty() {
+        let glued = Glued::new(track, left);
+        emit(events, Event::Stage("Transcribing".into()));
+        let (new, found) = run_whisper(
+            context,
+            &glued,
+            speakers,
+            language,
+            &ahead.earlier(),
+            false,
+            progress,
+            events,
+            abort,
+        )?;
+        detected = found;
+        let (region, segment) = ahead.next_numbers();
+        words.extend(place_words(&new, &glued, region, segment));
+    }
+    let heard = words
+        .iter()
+        .map(|w| Heard {
+            text: w.text.clone(),
+            at_ms: w.start_ms,
+            sure: w.sure,
+        })
+        .collect();
+    Ok(SidePass {
+        lines: phrases_located(&words, speakers, track, false),
+        detected,
+        heard,
+    })
+}
+
+/// What is left of `regions` after sample `done`. A stretch the call's own
+/// look ended a little earlier leaves a sliver: under half a second, it is
+/// the tail of a word already transcribed.
+fn left_after(regions: &[Region], done: usize) -> Vec<Region> {
+    regions
+        .iter()
+        .filter(|r| r.end > done)
+        .filter(|r| r.start >= done || r.end - done >= WHISPER_RATE / 2)
+        .map(|r| Region {
+            start: r.start.max(done),
+            onset: r.onset.max(done),
+            end: r.end,
+        })
+        .collect()
+}
+
 /// What whisper gives for one side: its lines, the language it detected, and
 /// every word with how sure it was of it.
 struct SidePass {
@@ -1462,12 +1823,75 @@ const PARAGRAPH_PAUSE_MS: i64 = 3000;
 /// Very long turns are still split, so a line stays a useful place to jump to.
 const PARAGRAPH_MAX_MS: i64 = 90_000;
 
-/// Groups the words into the lines of the transcript: a new line where the
-/// speaker changes, where a sentence ends on another speaker, and at every
-/// stretch of silence. Timestamps are put back on the real timeline.
+/// A word placed on the recording's timeline: what `phrases` needs of it,
+/// kept from one whisper pass to the next when a call is transcribed while
+/// it goes on (see `live.rs`).
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct LocatedWord {
+    pub(crate) text: String,
+    pub(crate) start_ms: i64,
+    pub(crate) end_ms: i64,
+    /// The stretch of sound it is in, numbered across passes, and where the
+    /// sound of that stretch starts.
+    pub(crate) region: usize,
+    pub(crate) onset_ms: i64,
+    /// The whisper segment it came from, numbered across passes.
+    pub(crate) segment: usize,
+    pub(crate) no_speech: f32,
+    pub(crate) sure: f32,
+}
+
+/// `words` from whisper over `glued`, on the recording's timeline; stretches
+/// and segments numbered from `first_region` and `first_segment`.
+fn place_words(
+    words: &[Word],
+    glued: &Glued,
+    first_region: usize,
+    first_segment: usize,
+) -> Vec<LocatedWord> {
+    words
+        .iter()
+        .map(|word| {
+            let (start_ms, region) = glued.locate(word.start_ms);
+            let (end_ms, _) = glued.locate(word.end_ms.max(word.start_ms));
+            LocatedWord {
+                text: word.text.clone(),
+                start_ms,
+                end_ms,
+                region: first_region + region,
+                onset_ms: glued
+                    .map
+                    .get(region)
+                    .map_or(start_ms, |(_, r)| sample_to_ms(r.onset)),
+                segment: first_segment + word.segment,
+                no_speech: word.no_speech,
+                sure: word.sure,
+            }
+        })
+        .collect()
+}
+
 fn phrases(
     words: &[Word],
     glued: &Glued,
+    speakers: &Speakers,
+    mixed: &[f32],
+    paragraphs: bool,
+) -> Vec<Segment> {
+    phrases_located(
+        &place_words(words, glued, 0, 0),
+        speakers,
+        mixed,
+        paragraphs,
+    )
+}
+
+/// Groups the words into the lines of the transcript: a new line where the
+/// speaker changes, where a sentence ends on another speaker, and at every
+/// stretch of silence. `mixed` is the side's levelled track, on the same
+/// timeline as the words.
+fn phrases_located(
+    words: &[LocatedWord],
     speakers: &Speakers,
     mixed: &[f32],
     paragraphs: bool,
@@ -1477,6 +1901,7 @@ fn phrases(
         start_ms: i64,
         end_ms: i64,
         region: usize,
+        onset_ms: i64,
         no_speech: f32,
         segment: usize,
     }
@@ -1490,8 +1915,7 @@ fn phrases(
     // First cut at sentence ends and region changes, so each piece has one voice.
     let mut pieces: Vec<Phrase> = Vec::new();
     for word in words {
-        let (start, region) = glued.locate(word.start_ms);
-        let (end, _) = glued.locate(word.end_ms.max(word.start_ms));
+        let (start, end, region) = (word.start_ms, word.end_ms, word.region);
         let sentence_ended = pieces
             .last()
             .is_some_and(|p| p.words.last().is_some_and(|w| ends_sentence(w)));
@@ -1517,6 +1941,7 @@ fn phrases(
                 start_ms: start,
                 end_ms: end.max(start),
                 region,
+                onset_ms: word.onset_ms,
                 no_speech: word.no_speech,
                 segment: word.segment,
             }),
@@ -1527,10 +1952,8 @@ fn phrases(
     // tends to put them at the start of the padding instead.
     let mut previous_region = usize::MAX;
     for piece in &mut pieces {
-        if piece.region != previous_region
-            && let Some((_, region)) = glued.map.get(piece.region)
-        {
-            let onset = sample_to_ms(region.onset);
+        if piece.region != previous_region {
+            let onset = piece.onset_ms;
             if (piece.start_ms - onset).abs() < 1500 {
                 let shift = onset - piece.start_ms;
                 piece.start_ms = onset;
@@ -2007,6 +2430,165 @@ mod tests {
             hex(&sha2::Sha256::digest(b"abc")),
             "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
         );
+    }
+
+    fn word(text: &str, start_ms: i64, region: usize, segment: usize) -> LocatedWord {
+        LocatedWord {
+            text: text.into(),
+            start_ms,
+            end_ms: start_ms + 300,
+            region,
+            onset_ms: start_ms,
+            segment,
+            no_speech: 0.01,
+            sure: 0.9,
+        }
+    }
+
+    #[test]
+    fn what_was_transcribed_during_the_call_is_read_back_as_it_was() {
+        let ahead = Ahead {
+            sides: [
+                AheadSide {
+                    done: 320_000,
+                    words: vec![word("Oui.", 900, 0, 0)],
+                },
+                AheadSide {
+                    done: 640_000,
+                    words: vec![word("Bonjour", 1200, 0, 0), word("à tous.", 1600, 0, 0)],
+                },
+            ],
+            detected: Some("fr".into()),
+        };
+        let json = ahead.to_json("large-v3-turbo", "auto");
+        let text = json.to_string();
+        let back = serde_json::from_str(&text).unwrap();
+        assert_eq!(
+            Ahead::from_json(&back, "large-v3-turbo", "auto"),
+            Some(ahead.clone())
+        );
+        assert_eq!(ahead.sides[1].next_numbers(), (1, 1));
+        assert_eq!(ahead.sides[1].earlier(), "Bonjour à tous.");
+        assert_eq!(ahead.needs_from(), 320_000 / FRAME * FRAME);
+        // Made with another model or language: the transcript starts over.
+        assert_eq!(Ahead::from_json(&back, "small", "auto"), None);
+        assert_eq!(Ahead::from_json(&back, "large-v3-turbo", "fr"), None);
+    }
+
+    #[test]
+    fn after_the_call_only_what_is_left_goes_to_whisper() {
+        let at = |secs: f64| (secs * WHISPER_RATE as f64) as usize;
+        let region = |start: f64, end: f64| Region {
+            start: at(start),
+            onset: at(start),
+            end: at(end),
+        };
+        let regions = [
+            region(1.0, 4.0),
+            region(5.0, 10.2),
+            region(11.0, 13.0),
+            region(14.0, 18.0),
+        ];
+        let left = left_after(&regions, at(10.0));
+        // The sliver past 10 s is the end of a word already heard.
+        assert_eq!(
+            left.iter().map(|r| (r.start, r.end)).collect::<Vec<_>>(),
+            vec![(at(11.0), at(13.0)), (at(14.0), at(18.0))]
+        );
+        let left = left_after(&regions, at(12.0));
+        assert_eq!(left[0].start, at(12.0));
+        assert_eq!(left.len(), 2);
+    }
+
+    /// A recorded call transcribed as the app does it with `Ahead`: the other
+    /// side as the call goes on, then the rest after Stop, against the
+    /// transcript made after the call only.
+    /// `MINUTES_AHEAD_MIC=mic.ogg MINUTES_AHEAD_COMPUTER=computer.ogg cargo test --release -- --ignored --nocapture ahead_saves_the_wait`
+    #[test]
+    #[ignore]
+    fn ahead_saves_the_wait() {
+        let (Ok(mic), Ok(computer)) = (
+            std::env::var("MINUTES_AHEAD_MIC"),
+            std::env::var("MINUTES_AHEAD_COMPUTER"),
+        ) else {
+            return;
+        };
+        let language = std::env::var("MINUTES_AHEAD_LANGUAGE").unwrap_or_else(|_| "fr".into());
+        let mic = load_track(Path::new(&mic)).unwrap();
+        let computer = load_track(Path::new(&computer)).unwrap();
+        let (events, abort) = (async_channel::unbounded().0, Abort::default());
+
+        let model = crate::models::find().unwrap();
+        let context = load_preview_whisper(&model, true).unwrap();
+        let mut ahead = Ahead::default();
+        let mut levels = [Levels::default(), Levels::default()];
+        let (mut heard, mut during, mut passes) = (0, 0.0, 0);
+        let length = mic.len().min(computer.len());
+        while heard < length {
+            heard = (heard + WHISPER_RATE).min(length);
+            levels[0].update(&mic, 0, heard);
+            levels[1].update(&computer, 0, heard);
+            if heard % (5 * WHISPER_RATE) == 0 {
+                let started = Instant::now();
+                if ahead
+                    .step(
+                        &context, &mic, &computer, 0, heard, &levels, &language, &abort,
+                    )
+                    .unwrap()
+                {
+                    during += started.elapsed().as_secs_f64();
+                    passes += 1;
+                }
+            }
+        }
+        drop(context);
+
+        let words = |transcript: &Transcript| -> Vec<String> {
+            transcript
+                .segments
+                .iter()
+                .flat_map(|l| l.text.split_whitespace())
+                .map(|w| {
+                    w.trim_matches(|c: char| !c.is_alphanumeric())
+                        .to_lowercase()
+                })
+                .filter(|w| !w.is_empty())
+                .collect()
+        };
+        let started = Instant::now();
+        let with =
+            transcribe_with(&mic, &computer, &language, Some(&ahead), &events, &abort).unwrap();
+        let with_secs = started.elapsed().as_secs_f64();
+        let started = Instant::now();
+        let after = transcribe(&mic, &computer, &language, &events, &abort).unwrap();
+        let after_secs = started.elapsed().as_secs_f64();
+
+        let (a, b) = (words(&after), words(&with));
+        let mut previous: Vec<u32> = (0..=b.len() as u32).collect();
+        for (i, x) in a.iter().enumerate() {
+            let mut current = vec![i as u32 + 1];
+            for (j, y) in b.iter().enumerate() {
+                current.push(
+                    (previous[j + 1] + 1)
+                        .min(current[j] + 1)
+                        .min(previous[j] + u32::from(x != y)),
+                );
+            }
+            previous = current;
+        }
+        println!(
+            "{:.0} min, {passes} passes during the call ({during:.0} s of whisper); \
+             after Stop {with_secs:.1} s instead of {after_secs:.1} s; \
+             {} lines instead of {}, words that differ {:.1} %",
+            computer.len() as f64 / WHISPER_RATE as f64 / 60.0,
+            with.segments.len(),
+            after.segments.len(),
+            previous[b.len()] as f64 * 100.0 / a.len().max(1) as f64,
+        );
+        if let Ok(out) = std::env::var("MINUTES_AHEAD_OUT") {
+            std::fs::write(format!("{out}.ahead.md"), to_markdown("ahead", "", &with)).unwrap();
+            std::fs::write(format!("{out}.after.md"), to_markdown("after", "", &after)).unwrap();
+        }
     }
 
     #[test]

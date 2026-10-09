@@ -25,6 +25,11 @@
     <control>pointing</control>
   </supports>
   <releases>
+    <release version="0.13.0" date="2026-10-09">
+      <description>
+        <p>The call is transcribed while it goes on, so the transcript is ready seconds after Stop instead of minutes.</p>
+      </description>
+    </release>
     <release version="0.12.1" date="2026-10-08">
       <description>
         <p>A faint voice on the other side of a call, or in an imported file, is transcribed instead of being dropped.</p>

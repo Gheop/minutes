@@ -6,6 +6,11 @@
 //! one side are not told apart, and each batch is transcribed on its own; the
 //! transcript made after the call is the one to keep. Each line has its times,
 //! so the app can name the speaker from another source (the meeting app).
+//!
+//! When the preview runs the transcript's own model, the same thread also
+//! transcribes the call for the transcript as it goes on (`Ahead`), kept in
+//! `live.json` in the staging folder: after Stop, only the end of the call is
+//! left to transcribe.
 
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
@@ -16,9 +21,31 @@ use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use crate::transcribe::{
-    Abort, Downsampler, FRAME, Levels, Region, Segment, WHISPER_RATE, load_preview_whisper,
+    Abort, Ahead, Downsampler, FRAME, Levels, Region, Segment, WHISPER_RATE, load_preview_whisper,
     preview_pass, preview_regions, raw_to_mono,
 };
+
+/// Where `Ahead` is kept in the staging folder.
+pub const AHEAD_FILE: &str = "live.json";
+
+/// What of the other side was transcribed during the call recorded in
+/// `staging`, when made with the transcript's model and `language`.
+pub fn ahead_in(staging: &Path, language: &str) -> Option<Ahead> {
+    let bytes = std::fs::read(staging.join(AHEAD_FILE)).ok()?;
+    let value = serde_json::from_slice(&bytes).ok()?;
+    Ahead::from_json(&value, &crate::models::configured(), language)
+}
+
+fn keep_ahead(staging: &Path, ahead: &Ahead, language: &str) {
+    let json = ahead.to_json(&crate::models::configured(), language);
+    // Written whole then renamed: a crash mid-write leaves the last one.
+    let partial = staging.join(format!("{AHEAD_FILE}.partial"));
+    if let Err(e) = std::fs::write(&partial, json.to_string())
+        .and_then(|()| std::fs::rename(&partial, staging.join(AHEAD_FILE)))
+    {
+        crate::warn(format!("could not keep the transcript so far: {e}"));
+    }
+}
 
 /// A stretch counts as ended when this much has been heard after it.
 const SETTLED: usize = WHISPER_RATE * 4 / 5;
@@ -156,7 +183,10 @@ fn run(
     updates: &async_channel::Sender<Update>,
     stop: &Abort,
 ) -> Vec<Segment> {
-    let context = match load_preview_whisper(model) {
+    // The transcript's model aligns word times; a smaller one for the
+    // preview cannot write the transcript.
+    let aligned = crate::models::find().as_deref() == Some(model);
+    let context = match load_preview_whisper(model, aligned) {
         Ok(context) => context,
         Err(e) => {
             crate::warn(format!("no preview: {e}"));
@@ -171,6 +201,7 @@ fn run(
     let mut written = Vec::new();
     let mut drafts = [String::new(), String::new()];
     let mut levels = [Levels::default(), Levels::default()];
+    let mut ahead = aligned.then(Ahead::default);
     let mut tick = 0u64;
     let mut next = Instant::now();
     while !stop.load(Ordering::Relaxed) {
@@ -198,10 +229,39 @@ fn run(
         }
         levels[0].update(&mic.samples, mic.base, heard);
         levels[1].update(&computer.samples, computer.base, heard);
+        // Every 5 s, the stretches that have ended, for the transcript, once
+        // there are enough of them.
+        if tick.is_multiple_of(10)
+            && let Some(transcript) = ahead.as_mut()
+        {
+            match transcript.step(
+                &context,
+                &mic.samples,
+                &computer.samples,
+                mic.base,
+                heard,
+                &levels,
+                language,
+                stop,
+            ) {
+                Ok(true) => keep_ahead(staging, transcript, language),
+                Ok(false) => {}
+                // Stopped: what is kept stays, the transcript does the rest.
+                Err(_) if stop.load(Ordering::Relaxed) => return written,
+                Err(e) => {
+                    crate::warn(format!("the transcript is left for after the call: {e}"));
+                    let _ = std::fs::remove_file(staging.join(AHEAD_FILE));
+                    ahead = None;
+                }
+            }
+        }
         // Only the part not transcribed yet is looked at, and kept.
         let from = done[0].min(done[1]).saturating_sub(MARGIN) / FRAME * FRAME;
-        mic.forget_before(from);
-        computer.forget_before(from);
+        // Both from the same sample: your stretches are found with the
+        // other side's track.
+        let keep = ahead.as_ref().map_or(from, |a| a.needs_from().min(from));
+        mic.forget_before(keep);
+        computer.forget_before(keep);
         let (mic_track, mic_regions, computer_track, computer_regions) = preview_regions(
             mic.between(from, heard),
             computer.between(from, heard),
@@ -495,6 +555,9 @@ mod tests {
         std::thread::sleep(std::time::Duration::from_secs(8));
         let lines = preview.finish();
         println!("{} lines in all", lines.len());
+        if let Some(ahead) = ahead_in(&staging, "en") {
+            println!("transcribed for the transcript: {}", ahead.summary());
+        }
         if !draft_ages.is_empty() {
             draft_ages.sort_by(f64::total_cmp);
             println!(
