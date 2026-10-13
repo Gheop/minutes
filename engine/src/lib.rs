@@ -1,6 +1,6 @@
 //! The engine of Minutes: records a meeting as two tracks (the mic and the
 //! computer audio), transcribes each with whisper.cpp after the call, tells
-//! the voices on each side apart, and writes the meeting folder. No GTK: it
+//! the voices on each side apart, writes the meeting folder and its summary. No GTK: it
 //! runs and is tested without a display.
 
 pub mod audio;
@@ -14,6 +14,7 @@ pub mod models;
 pub mod nemotron;
 pub mod review;
 pub mod session;
+pub mod summary;
 pub mod teams;
 pub mod transcribe;
 

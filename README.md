@@ -1,12 +1,12 @@
 # Minutes
 
-A meeting recorder and transcriber for GNOME. It records your microphone and what your computer plays as two tracks, and when the meeting ends you get a transcript with who said what, made on your own machine.
+A meeting recorder and transcriber for GNOME. It records your microphone and what your computer plays as two tracks, and when the meeting ends you get a transcript with who said what and a summary of what was decided, both made on your own machine.
 
 No bot joins the call and no audio leaves your computer. It works with Teams, Meet, Zoom or anything else that plays sound, because it listens to your devices, not to the meeting service.
 
-> **Status: early.** The engine records, transcribes and tells speakers apart, and is tested. The GNOME app records, transcribes and shows the transcript; a Shell extension shows it in the top bar. It notices calls and offers to record them. Renaming speakers, playback and preferences are still to come.
+> **Status: early.** The engine records, transcribes and tells speakers apart, and is tested. The GNOME app records, transcribes, shows the transcript and writes a summary; a Shell extension shows it in the top bar. It notices calls and offers to record them. Renaming speakers, playback and preferences are still to come.
 
-<p align="center"><img src="docs/screenshots/ready.webp" alt="Minutes ready to record: the meeting name, the language, the level of your microphone and of the computer audio, and the Record button" width="480">&nbsp;<img src="docs/screenshots/transcript.webp" alt="A transcript in Minutes: each paragraph with its speaker and time, the meetings listed on the left" width="480"></p>
+<p align="center"><img src="docs/screenshots/ready.webp" alt="Minutes ready to record: the meeting name, the language, and the Record button" width="320">&nbsp;<img src="docs/screenshots/summary.webp" alt="The summary of a meeting in Minutes: a short summary, the decisions and the action items, each in its own card" width="320">&nbsp;<img src="docs/screenshots/transcript.webp" alt="A transcript in Minutes: each paragraph with its speaker and time, the meetings listed on the left" width="320"></p>
 
 ## Where it comes from
 
@@ -64,6 +64,16 @@ It needs whisper on a GPU (the `cuda` or `vulkan` build). On the CPU the usual m
 live_model = "small"
 ```
 
+## Notes and summary
+
+While Minutes records, a Notes field under the buttons takes what you type: a question to settle, a name, "budget?". The notes are kept as you type, and go to `notes.md` in the meeting folder.
+
+After the transcript, a Summary tab shows the minutes of the meeting: a short summary, the decisions, the action items with who does them, the open questions, and the topics with the time each starts at. Your notes come first in it. Copy takes the tab you are on.
+
+The summary is written on your computer by [Qwen3.5 4B](https://huggingface.co/Qwen/Qwen3.5-4B) (Apache 2.0) in [llama.cpp](https://github.com/ggml-org/llama.cpp) (MIT), started for the summary and stopped after it, so it leaves the GPU's memory to the next call. The first summary is asked for with a button, as it downloads 2.8 GB: llama.cpp's own Vulkan build (30 MB) and the model; both are fixed versions checked against their SHA-256. After that, every meeting gets its summary once its transcript is done. On an RTX 2050 with 4 GB, an hour of French meeting took 108 and 125 s, with 3.2 GB of the GPU's memory. A meeting longer than an hour and a half is summarized in parts first. Starting a recording stops a summary being written; the button writes it again later.
+
+It is a draft to check: on the two meetings it was tried on, the decisions and the action items were the ones said, but a name or a date can come out wrong when the transcript has them wrong. `summary = false` in the config hides it, and `minutes summarize <meeting folder>` writes one from the command line.
+
 ## Nothing lost
 
 If Minutes stops while it records (a crash, a logout, a power cut), the raw audio stays in `~/.cache`, and the next start shows a banner to write its transcript or delete it; started in the background, Minutes says so in a notification.
@@ -74,7 +84,7 @@ Each track keeps time on its own: when a device stops sending sound (a headset a
 
 Recordings and transcripts stay on your computer, in folders only your account can read: `~/Documents/Meetings` and the recordings in progress under `~/.cache` are created with mode `700`, since they hold the voices of people who did not choose where they are kept.
 
-The speech models are downloaded from Hugging Face at a fixed revision, and each file is checked against its SHA-256 before it is used; a file that differs is refused and deleted.
+The speech models are downloaded from Hugging Face at a fixed revision, and each file is checked against its SHA-256 before it is used; a file that differs is refused and deleted. The summary model and llama.cpp are checked the same way, and llama.cpp's server only listens on this computer, with a key Minutes makes for each summary.
 
 ## Alone at your microphone
 
@@ -161,6 +171,8 @@ fix = "Okafur => Okafor"
 
 `model` is `large-v3-turbo` unless set. `large-v3-turbo-q5_0` is the same model in 5 bits, a third of the size (574 MB): on this laptop it made a 42-minute French hearing 6 % faster with the same text, but a 17-minute English meeting 10 % slower, as whisper had to try hard passages again more often; worth it mostly when the GPU is short of memory. `large-v3-turbo-q8_0` (874 MB) lost a passage once in the tests. `tiny` to `large-v3` are the other models whisper.cpp offers.
 
+`summary = false` turns the summary off.
+
 `prompt` tells whisper the names and words to expect, for the whole recording: on a French meeting it took misspelled work terms from 13 to 2 in 74 minutes. A word it still gets wrong needs a `fix` line, which replaces it in the finished transcript. Both stay on your computer, in your config, and grow as you answer the words to check after a meeting. `ignore = "word"` lines are the words set aside there.
 
 ## License
@@ -168,6 +180,14 @@ fix = "Okafur => Okafor"
 MIT, like the project it comes from. See [LICENSE](LICENSE).
 
 ## Changelog
+
+### v0.14.0 — Notes and a summary (2026-10-13)
+
+- A Notes field while recording: what you type is kept as you type it, and goes to the meeting folder
+- A Summary tab next to the transcript: the decisions, the action items with who does them, the open questions and the topics, written on your computer from the transcript and your notes, in about 2 minutes for an hour of meeting
+- The first summary downloads llama.cpp and the model that writes it (2.8 GB) when you ask for it; after that each meeting gets one on its own
+- `minutes summarize <meeting folder>` from the command line
+- The README's pictures are in English
 
 ### v0.13.0 — The transcript ready after the call (2026-10-09)
 
@@ -310,4 +330,5 @@ MIT, like the project it comes from. See [LICENSE](LICENSE).
 
 | Version | Date       | Changes                                                       |
 |---------|------------|---------------------------------------------------------------|
+| 1.1.0   | 2026-10-13 | Add notes and summary, show English screenshots               |
 | 1.0.0   | 2026-10-09 | Add the transcript made during the call and this revision log |

@@ -60,7 +60,7 @@ fn main() -> glib::ExitCode {
     // The command-line tools keep their warnings on stderr, for whoever runs them.
     if !matches!(
         command,
-        Some("transcribe" | "transcribe-file" | "diarize" | "write-up")
+        Some("transcribe" | "transcribe-file" | "diarize" | "write-up" | "summarize")
     ) {
         log_to_journal();
     }
@@ -71,6 +71,7 @@ fn main() -> glib::ExitCode {
         Some("transcribe-file") => return transcribe::cli_file(&args[2..]),
         Some("diarize") => return diarize::cli(&args[2..]),
         Some("write-up") => return session::cli(&args[2..]),
+        Some("summarize") => return minutes_engine::summary::cli(&args[2..]),
         _ => {}
     }
 

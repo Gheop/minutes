@@ -13,6 +13,21 @@ use crate::meeting::{self, Manifest};
 /// Bytes per second of a raw track: 48 kHz, stereo, 16 bits.
 const RAW_BYTES_PER_SEC: u64 = 48_000 * 2 * 2;
 const NOTE: &str = "recording.json";
+/// What you typed during the call, in the recording's folder and then in the
+/// meeting's.
+pub const NOTES: &str = "notes.md";
+
+/// Keeps the notes typed so far for the recording in `staging`.
+pub fn write_notes(staging: &Path, text: &str) -> std::io::Result<()> {
+    std::fs::write(staging.join(NOTES), text)
+}
+
+/// The notes typed during the meeting in `dir`, if any.
+pub fn notes(dir: &Path) -> Option<String> {
+    std::fs::read_to_string(dir.join(NOTES))
+        .ok()
+        .filter(|text| !text.trim().is_empty())
+}
 
 /// Where recordings wait while they are made, one folder each.
 pub fn staging_root() -> PathBuf {
@@ -168,6 +183,14 @@ pub fn write_up(
 ) -> Result<(), String> {
     crate::glossary::set_names(&note.names);
     let saved = save_audio(staging, out, note.format);
+    if let Some(text) = notes(staging)
+        && let Err(e) = std::fs::write(out.join(NOTES), text)
+    {
+        crate::warn(format!(
+            "could not keep the notes in {}: {e}",
+            out.display()
+        ));
+    }
     let mut manifest = Manifest {
         title: note.title.clone(),
         started_at: note.started_at,

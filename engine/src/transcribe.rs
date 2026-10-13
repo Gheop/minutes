@@ -1057,6 +1057,12 @@ fn gpu_device() -> i32 {
     0
 }
 
+/// The Vulkan device whisper runs on, as llama.cpp numbers it too: both take
+/// ggml's list of devices. None in the other builds.
+pub(crate) fn vulkan_device() -> Option<i32> {
+    cfg!(feature = "vulkan").then(gpu_device)
+}
+
 /// The whisper model for the preview, on the GPU when there is one. With
 /// `aligned`, word times are aligned as the transcript after the call needs
 /// them, for transcribing the other side as the call goes on (`Ahead`); the
@@ -2285,6 +2291,7 @@ pub(crate) fn usage() -> glib::ExitCode {
         "       {APP_NAME} transcribe-file <audio> [--speakers N] [--language auto|en|nl|...] [--model name]"
     );
     eprintln!("       {APP_NAME} write-up <recording folder> [--into folder] [--model name]");
+    eprintln!("       {APP_NAME} summarize <meeting folder>");
     glib::ExitCode::from(2)
 }
 

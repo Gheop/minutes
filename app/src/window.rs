@@ -18,6 +18,7 @@ use minutes_engine::live::{Preview, Update};
 use minutes_engine::meeting;
 use minutes_engine::review;
 use minutes_engine::session::{self, Note};
+use minutes_engine::summary;
 use minutes_engine::teams;
 use minutes_engine::transcribe::{self, Abort, CANCELLED, Event, LANGUAGES, Segment, Transcript};
 
@@ -111,6 +112,20 @@ mod imp {
         #[template_child]
         pub transcript: TemplateChild<gtk::ListBox>,
         #[template_child]
+        pub meeting_switcher: TemplateChild<adw::ViewSwitcher>,
+        #[template_child]
+        pub meeting_views: TemplateChild<adw::ViewStack>,
+        #[template_child]
+        pub summary_stack: TemplateChild<gtk::Stack>,
+        #[template_child]
+        pub summary_offer: TemplateChild<adw::StatusPage>,
+        #[template_child]
+        pub summary_progress: TemplateChild<gtk::ProgressBar>,
+        #[template_child]
+        pub summary_box: TemplateChild<gtk::Box>,
+        #[template_child]
+        pub notes_view: TemplateChild<gtk::TextView>,
+        #[template_child]
         pub live_group: TemplateChild<adw::PreferencesGroup>,
         #[template_child]
         pub live_scroller: TemplateChild<gtk::ScrolledWindow>,
@@ -151,6 +166,8 @@ mod imp {
         pub mic_silent: Cell<bool>,
         /// What Teams showed during this recording.
         pub teams: RefCell<TeamsSeen>,
+        /// The meeting whose summary is being written, and how to stop it.
+        pub summarizing: RefCell<Option<(PathBuf, Abort)>>,
     }
 
     #[glib::object_subclass]
@@ -221,6 +238,28 @@ impl MinutesWindow {
             &names.iter().map(String::as_str).collect::<Vec<_>>(),
         )));
 
+        // The notes go to the recording's folder as they are typed: a crash
+        // loses none of them, and the transcript finds them there.
+        let weak = self.downgrade();
+        imp.notes_view.buffer().connect_changed(move |buffer| {
+            let Some(win) = weak.upgrade() else {
+                return;
+            };
+            let Some(staging) = win
+                .imp()
+                .recording
+                .borrow()
+                .as_ref()
+                .map(|r| r.staging.clone())
+            else {
+                return;
+            };
+            let text = buffer.text(&buffer.start_iter(), &buffer.end_iter(), false);
+            if let Err(e) = session::write_notes(&staging, &text) {
+                minutes_engine::warn(format!("could not keep the notes: {e}"));
+            }
+        });
+
         let action = |name: &str, run: fn(&MinutesWindow)| {
             gio::ActionEntry::builder(name)
                 .activate(move |win: &MinutesWindow, _, _| run(win))
@@ -238,6 +277,8 @@ impl MinutesWindow {
             action("mute-mic", Self::toggle_mute),
             action("recover", Self::ask_recovery),
             action("open-preview", Self::open_preview),
+            action("summarize", Self::summarize_shown),
+            action("cancel-summary", Self::cancel_summary),
             action("review", Self::review_words),
         ]);
         self.set_busy(false);
@@ -508,6 +549,10 @@ impl MinutesWindow {
             return;
         }
         imp.muted_here.set(false);
+        imp.notes_view.buffer().set_text("");
+        // The preview needs the GPU the summary is on: the summary can be
+        // written again later.
+        self.cancel_summary();
         // Your name carries over from one call to the next.
         let me = imp.teams.borrow().me.clone();
         *imp.teams.borrow_mut() = TeamsSeen {
@@ -754,6 +799,10 @@ impl MinutesWindow {
                 Ok(dir) => {
                     win.show_meeting(&dir);
                     win.notify_ready(&dir);
+                    // Once the model is here, every meeting gets its summary.
+                    if summary::enabled() && summary::ready() {
+                        win.summarize(&dir);
+                    }
                 }
                 Err(e) if e == CANCELLED => {
                     win.toast(&gettext("Transcript cancelled; the audio is kept"));
@@ -929,6 +978,7 @@ impl MinutesWindow {
         }
         *imp.markdown.borrow_mut() = markdown;
         *imp.shown.borrow_mut() = Some(dir.clone());
+        self.show_summary(&dir);
         self.update_review_banner();
         imp.content_page.set_title(&manifest.title);
         imp.copy_button.set_visible(true);
@@ -1485,8 +1535,123 @@ impl MinutesWindow {
     }
 
     fn copy(&self) {
-        self.clipboard().set_text(&self.imp().markdown.borrow());
-        self.toast(&gettext("Transcript copied"));
+        let imp = self.imp();
+        let summary = imp
+            .shown
+            .borrow()
+            .as_deref()
+            .and_then(|dir| std::fs::read_to_string(dir.join(summary::SUMMARY)).ok());
+        match summary {
+            Some(text) if imp.meeting_views.visible_child_name().as_deref() == Some("summary") => {
+                self.clipboard().set_text(&text);
+                self.toast(&gettext("Summary copied"));
+            }
+            _ => {
+                self.clipboard().set_text(&imp.markdown.borrow());
+                self.toast(&gettext("Transcript copied"));
+            }
+        }
+    }
+
+    /// The summary tab of the meeting in `dir`: the summary, the one being
+    /// written, or a button to write it.
+    fn show_summary(&self, dir: &Path) {
+        let imp = self.imp();
+        let enabled = summary::enabled();
+        imp.meeting_switcher.set_visible(enabled);
+        if !enabled {
+            imp.meeting_views.set_visible_child_name("transcript");
+            return;
+        }
+        let writing = imp
+            .summarizing
+            .borrow()
+            .as_ref()
+            .is_some_and(|(d, _)| d == dir);
+        let text = std::fs::read_to_string(dir.join(summary::SUMMARY)).ok();
+        let notes = session::notes(dir);
+        if writing {
+            imp.summary_stack.set_visible_child_name("writing");
+        } else if let Some(text) = &text {
+            fill_summary(&imp.summary_box, text, notes.as_deref());
+            imp.summary_stack.set_visible_child_name("done");
+        } else {
+            imp.summary_offer.set_description(Some(&if summary::ready() {
+                gettext("Decisions, action items and open questions, written from the transcript and your notes on this computer.")
+            } else {
+                gettext("Decisions, action items and open questions, written from the transcript and your notes on this computer. The first time, Minutes downloads the model that writes it: %d MB.")
+                    .replace("%d", &summary::DOWNLOAD_MB.to_string())
+            }));
+            imp.summary_stack.set_visible_child_name("offer");
+        }
+        imp.meeting_views
+            .set_visible_child_name(if writing || text.is_some() {
+                "summary"
+            } else {
+                "transcript"
+            });
+    }
+
+    fn summarize_shown(&self) {
+        if let Some(dir) = self.imp().shown.borrow().clone() {
+            self.summarize(&dir);
+        }
+    }
+
+    /// Writes the summary of the meeting in `dir`, one meeting at a time.
+    fn summarize(&self, dir: &Path) {
+        let imp = self.imp();
+        if imp.summarizing.borrow().is_some() || imp.recording.borrow().is_some() {
+            return;
+        }
+        let abort = Abort::default();
+        *imp.summarizing.borrow_mut() = Some((dir.to_path_buf(), abort.clone()));
+        imp.summary_progress.set_fraction(0.0);
+        imp.summary_progress.set_text(None);
+        if imp.shown.borrow().as_deref() == Some(dir) {
+            self.show_summary(dir);
+        }
+        let (events_tx, events_rx) = async_channel::unbounded::<Event>();
+        let (done_tx, done_rx) = async_channel::bounded(1);
+        let thread_dir = dir.to_path_buf();
+        std::thread::spawn(move || {
+            let result = summary::summarize(&thread_dir, &events_tx, &abort);
+            let _ = done_tx.send_blocking(result);
+            let _ = events_tx.send_blocking(Event::Finished);
+        });
+        let (win, dir) = (self.clone(), dir.to_path_buf());
+        glib::spawn_future_local(async move {
+            while let Ok(event) = events_rx.recv().await {
+                let imp = win.imp();
+                match event {
+                    Event::Stage(stage) => {
+                        imp.summary_progress.set_text(Some(&stage_label(&stage)))
+                    }
+                    Event::Progress(fraction) => imp.summary_progress.set_fraction(fraction),
+                    Event::Segment(_) => {}
+                    Event::Finished => break,
+                }
+            }
+            let result = done_rx
+                .recv()
+                .await
+                .unwrap_or_else(|_| Err("the summary stopped unexpectedly".into()));
+            win.imp().summarizing.borrow_mut().take();
+            if win.imp().shown.borrow().as_deref() == Some(dir.as_path()) {
+                win.show_summary(&dir);
+            }
+            if let Err(e) = result
+                && e != CANCELLED
+            {
+                win.toast(&format!("{}: {e}", gettext("Could not write the summary")));
+            }
+        });
+    }
+
+    fn cancel_summary(&self) {
+        if let Some((_, abort)) = self.imp().summarizing.borrow().as_ref() {
+            abort.store(true, Ordering::Relaxed);
+        }
     }
 
     fn open_folder(&self) {
@@ -1498,6 +1663,108 @@ impl MinutesWindow {
             |_| {},
         );
     }
+}
+
+/// Shows the summary's Markdown in `into`: a group for each `## section`, its
+/// paragraphs and bullets in a card, then the notes typed during the call.
+fn fill_summary(into: &gtk::Box, markdown: &str, notes: Option<&str>) {
+    while let Some(child) = into.first_child() {
+        into.remove(&child);
+    }
+    let mut sections: Vec<(String, Vec<String>)> = Vec::new();
+    for line in markdown.lines() {
+        let trimmed = line.trim();
+        if let Some(title) = trimmed.strip_prefix("## ") {
+            sections.push((title.trim().to_owned(), Vec::new()));
+        } else if trimmed.is_empty() || trimmed.starts_with("# ") {
+            continue;
+        } else {
+            if sections.is_empty() {
+                sections.push((String::new(), Vec::new()));
+            }
+            sections
+                .last_mut()
+                .expect("a section")
+                .1
+                .push(line.to_owned());
+        }
+    }
+    if let Some(notes) = notes {
+        sections.push((
+            gettext("Your Notes"),
+            notes.lines().map(str::to_owned).collect(),
+        ));
+    }
+    for (title, lines) in sections {
+        let group = adw::PreferencesGroup::builder()
+            .title(glib::markup_escape_text(&title))
+            .build();
+        let rows = gtk::Box::builder()
+            .orientation(gtk::Orientation::Vertical)
+            .spacing(8)
+            .margin_top(12)
+            .margin_bottom(12)
+            .build();
+        for line in &lines {
+            rows.append(&summary_line(line));
+        }
+        let card = gtk::Box::builder().css_classes(["card"]).build();
+        card.append(&rows);
+        group.add(&card);
+        into.append(&group);
+    }
+}
+
+/// A line of the summary: a paragraph, or a bullet whose text lines up after
+/// its bullet when it wraps; an indented bullet goes a step further in.
+fn summary_line(line: &str) -> gtk::Widget {
+    let trimmed = line.trim();
+    let indent = line.len() - line.trim_start().len();
+    let item = trimmed
+        .strip_prefix("* ")
+        .or_else(|| trimmed.strip_prefix("- "));
+    let text = gtk::Label::builder()
+        .label(inline_markup(item.unwrap_or(trimmed).trim()))
+        .use_markup(true)
+        .wrap(true)
+        .wrap_mode(gtk::pango::WrapMode::WordChar)
+        .xalign(0.0)
+        .hexpand(true)
+        .selectable(true)
+        .build();
+    let row = gtk::Box::builder()
+        .spacing(8)
+        .margin_start(if item.is_some() && indent >= 2 {
+            36
+        } else {
+            12
+        })
+        .margin_end(12)
+        .build();
+    if item.is_some() {
+        let bullet = gtk::Label::builder()
+            .label(if indent >= 2 { "◦" } else { "•" })
+            .valign(gtk::Align::Start)
+            .build();
+        row.append(&bullet);
+    }
+    row.append(&text);
+    row.upcast()
+}
+
+/// A line of Markdown as Pango markup: `**bold**` kept, the rest escaped.
+fn inline_markup(line: &str) -> String {
+    line.split("**")
+        .enumerate()
+        .map(|(i, part)| {
+            let part = glib::markup_escape_text(part);
+            if i % 2 == 1 {
+                format!("<b>{part}</b>")
+            } else {
+                part.to_string()
+            }
+        })
+        .collect()
 }
 
 /// One paragraph of the transcript: who and when above, what below.
@@ -1554,7 +1821,17 @@ fn date_of(started_at: i64) -> String {
 
 /// The engine names its stages in English; show them in the user's language.
 pub fn stage_label(stage: &str) -> String {
+    // Downloads say how far they are: "Downloading model 42%".
+    if let Some((label, percent)) = stage.rsplit_once(' ')
+        && percent.ends_with('%')
+        && percent[..percent.len() - 1].parse::<u32>().is_ok()
+    {
+        return format!("{} {percent}", stage_label(label));
+    }
     match stage {
+        "Writing the summary" => gettext("Writing the summary"),
+        "Downloading llama.cpp" => gettext("Downloading llama.cpp"),
+        "Downloading the summary model" => gettext("Downloading the summary model"),
         "Loading audio" => gettext("Loading the audio"),
         "Finding speakers" => gettext("Telling the voices apart"),
         "Loading model" => gettext("Loading the speech model"),
