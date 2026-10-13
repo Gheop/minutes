@@ -300,6 +300,21 @@ fn with_line(mut text: String, line: &str) -> String {
     text
 }
 
+/// Sets `key = "value"` in the config, in place of the lines it had.
+pub fn set_config(key: &str, value: &str) -> std::io::Result<()> {
+    let value = clean(value);
+    rewrite(|text| with_setting(&text, key, &value))
+}
+
+/// The config `text` with `key = "value"` in place of its `key` lines.
+fn with_setting(text: &str, key: &str, value: &str) -> String {
+    let kept: Vec<&str> = text
+        .lines()
+        .filter(|line| line.split_once('=').is_none_or(|(k, _)| k.trim() != key))
+        .collect();
+    with_line(kept.join("\n"), &format!("{key} = \"{value}\""))
+}
+
 /// Adds `term` to the words whisper is told to expect (`prompt`).
 pub fn learn(term: &str) -> std::io::Result<()> {
     let term = clean(term);
@@ -357,6 +372,19 @@ pub fn ignore(word: &str) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_setting_replaces_its_old_value_and_keeps_the_rest() {
+        let text = "model = \"small\"\nsummary_by = \"local\"\nfix = \"a => b\"\n";
+        assert_eq!(
+            with_setting(text, "summary_by", "claude"),
+            "model = \"small\"\nfix = \"a => b\"\nsummary_by = \"claude\"\n"
+        );
+        assert_eq!(
+            with_setting("", "summary", "false"),
+            "summary = \"false\"\n"
+        );
+    }
 
     #[test]
     fn names_and_file_names_both_resolve() {

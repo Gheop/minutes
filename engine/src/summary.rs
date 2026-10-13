@@ -2,6 +2,10 @@
 //! during the call by a small language model on this computer: what was
 //! decided, who does what, what is left open.
 //!
+//! It can also be written by Claude Code (`claude -p`) or Codex (`codex
+//! exec`) when they are installed and chosen: better and quicker, but the
+//! transcript and the notes go to Anthropic or OpenAI through your account.
+//!
 //! The model runs in llama.cpp's own server, in a process of its own: it
 //! leaves the GPU as soon as the summary is written, and llama.cpp's copy of
 //! ggml does not meet whisper's. The server and the model are downloaded the
@@ -34,6 +38,77 @@ pub const DOWNLOAD_MB: u64 = (LLAMA_BYTES + MODEL_BYTES) / 1_000_000;
 
 /// The summary, next to the transcript.
 pub const SUMMARY: &str = "summary.md";
+/// Who wrote it: `local`, `claude` or `codex`.
+const WRITTEN_BY: &str = ".summary-by";
+
+/// Who writes the summary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Writer {
+    /// The model on this computer.
+    Local,
+    /// Claude Code, `claude -p`.
+    Claude,
+    /// OpenAI's Codex, `codex exec`.
+    Codex,
+}
+
+impl Writer {
+    pub const ALL: [Writer; 3] = [Writer::Local, Writer::Claude, Writer::Codex];
+
+    pub fn key(self) -> &'static str {
+        match self {
+            Writer::Local => "local",
+            Writer::Claude => "claude",
+            Writer::Codex => "codex",
+        }
+    }
+
+    pub fn from_key(key: &str) -> Option<Writer> {
+        Writer::ALL.into_iter().find(|w| w.key() == key)
+    }
+
+    /// Whether it can write here: the commands have to be installed.
+    pub fn available(self) -> bool {
+        match self {
+            Writer::Local => true,
+            Writer::Claude => glib::find_program_in_path("claude").is_some(),
+            Writer::Codex => glib::find_program_in_path("codex").is_some(),
+        }
+    }
+
+    /// Whether it writes without a download first.
+    pub fn ready(self) -> bool {
+        match self {
+            Writer::Local => ready(),
+            _ => self.available(),
+        }
+    }
+
+    /// `summary_by` in the config, when it can write here; else this computer.
+    pub fn configured() -> Writer {
+        crate::models::config_value("summary_by")
+            .and_then(|key| Writer::from_key(&key))
+            .filter(|w| w.available())
+            .unwrap_or(Writer::Local)
+    }
+
+    /// Keeps it as the one that writes the summaries from now on.
+    pub fn choose(self) -> std::io::Result<()> {
+        crate::models::set_config("summary_by", self.key())
+    }
+}
+
+/// Who wrote the summary of the meeting in `dir`.
+pub fn written_by(dir: &Path) -> Option<Writer> {
+    std::fs::read_to_string(dir.join(WRITTEN_BY))
+        .ok()
+        .and_then(|key| Writer::from_key(key.trim()))
+}
+
+/// Turns the summaries after each meeting on or off.
+pub fn set_enabled(on: bool) -> std::io::Result<()> {
+    crate::models::set_config("summary", if on { "true" } else { "false" })
+}
 
 /// The longest the model reads at once, in tokens: an hour and a half of
 /// meeting. A longer one is summarized in parts first.
@@ -105,8 +180,8 @@ fn ensure(events: &Events, abort: &Abort) -> Result<(), String> {
 }
 
 /// Writes `summary.md` in the meeting folder `dir`, from its transcript and
-/// its notes. Blocking: run it off the main thread.
-pub fn summarize(dir: &Path, events: &Events, abort: &Abort) -> Result<(), String> {
+/// its notes, by `writer`. Blocking: run it off the main thread.
+pub fn summarize(dir: &Path, writer: Writer, events: &Events, abort: &Abort) -> Result<(), String> {
     let markdown = std::fs::read_to_string(dir.join("transcript.md"))
         .map_err(|e| format!("no transcript in {}: {e}", dir.display()))?;
     let lines = lines_of(&markdown);
@@ -115,13 +190,160 @@ pub fn summarize(dir: &Path, events: &Events, abort: &Abort) -> Result<(), Strin
     }
     let notes = crate::session::notes(dir).unwrap_or_default();
     let french = language_of(&markdown) == "French";
-    ensure(events, abort)?;
-    emit(events, Event::Stage("Writing the summary".into()));
-    let server = Server::start(abort)?;
-    let summary = write(&server, &lines, &notes, french, events, abort)?;
+    let summary = match writer {
+        Writer::Local => {
+            ensure(events, abort)?;
+            emit(events, Event::Stage("Writing the summary".into()));
+            let server = Server::start(abort)?;
+            write(&server, &lines, &notes, french, events, abort)?
+        }
+        // An hour of meeting is far within what they read at once.
+        _ => {
+            emit(events, Event::Stage("Writing the summary".into()));
+            emit(events, Event::Progress(0.1));
+            ask_command(
+                writer,
+                &prompt(&lines.join("\n"), &notes, french, false),
+                abort,
+            )?
+        }
+    };
     let summary = format!("{}\n", summary.trim());
     std::fs::write(dir.join(SUMMARY), summary)
+        .and_then(|()| std::fs::write(dir.join(WRITTEN_BY), writer.key()))
         .map_err(|e| format!("could not write the summary: {e}"))
+}
+
+/// The answer of Claude Code or Codex to `messages`, with no tools and in an
+/// empty folder: they only read what they are given. Cancelling stops them.
+fn ask_command(
+    writer: Writer,
+    messages: &[(&str, String)],
+    abort: &Abort,
+) -> Result<String, String> {
+    let system = format!("{} Answer with the minutes only.", messages[0].1);
+    let user = &messages[1].1;
+    let work = std::env::temp_dir().join(format!(
+        "{}-summary-{}",
+        crate::APP_NAME,
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&work).map_err(|e| format!("{}: {e}", work.display()))?;
+    let answer = work.join("answer.md");
+    let (program, args, input): (&str, Vec<String>, String) = match writer {
+        Writer::Claude => (
+            "claude",
+            [
+                "-p",
+                "--tools",
+                "",
+                "--strict-mcp-config",
+                "--no-session-persistence",
+                "--output-format",
+                "text",
+                "--system-prompt",
+                &system,
+            ]
+            .map(str::to_owned)
+            .to_vec(),
+            user.clone(),
+        ),
+        // Codex has no system prompt of its own: the instructions go first.
+        Writer::Codex => (
+            "codex",
+            [
+                "exec",
+                "--sandbox",
+                "read-only",
+                "--skip-git-repo-check",
+                "--color",
+                "never",
+                "--output-last-message",
+                &answer.to_string_lossy(),
+            ]
+            .map(str::to_owned)
+            .to_vec(),
+            format!("{system}\n\n{user}"),
+        ),
+        Writer::Local => unreachable!("the model on this computer has its own server"),
+    };
+    let result = run_command(program, &args, &input, &work, abort).and_then(|out| match writer {
+        Writer::Codex => {
+            std::fs::read_to_string(&answer).map_err(|e| format!("codex gave no summary: {e}"))
+        }
+        _ => Ok(out),
+    });
+    let _ = std::fs::remove_dir_all(&work);
+    let text = result?;
+    if text.trim().is_empty() {
+        return Err(format!("{program} gave an empty summary"));
+    }
+    Ok(text)
+}
+
+/// Runs `program` in `dir` with `input` on its standard input; its output.
+fn run_command(
+    program: &str,
+    args: &[String],
+    input: &str,
+    dir: &Path,
+    abort: &Abort,
+) -> Result<String, String> {
+    use std::io::Write;
+    let mut child = Command::new(program)
+        .args(args)
+        .current_dir(dir)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("could not run {program}: {e}"))?;
+    let mut stdin = child.stdin.take().expect("piped stdin");
+    let input = input.to_owned();
+    let feeding = std::thread::spawn(move || stdin.write_all(input.as_bytes()));
+    let mut stdout = child.stdout.take().expect("piped stdout");
+    let reading = std::thread::spawn(move || {
+        let mut text = String::new();
+        stdout.read_to_string(&mut text).map(|_| text)
+    });
+    let mut stderr = child.stderr.take().expect("piped stderr");
+    let errors = std::thread::spawn(move || {
+        let mut text = String::new();
+        let _ = stderr.read_to_string(&mut text);
+        text
+    });
+    let started = Instant::now();
+    let status = loop {
+        if let Some(status) = child.try_wait().map_err(|e| e.to_string())? {
+            break status;
+        }
+        let late = started.elapsed() > Duration::from_secs(15 * 60);
+        if abort.load(Ordering::Relaxed) || late {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(if late {
+                format!("{program} did not answer in 15 minutes")
+            } else {
+                CANCELLED.into()
+            });
+        }
+        std::thread::sleep(Duration::from_millis(200));
+    };
+    let _ = feeding.join();
+    let out = reading
+        .join()
+        .map_err(|_| "reading the summary panicked".to_owned())?
+        .map_err(|e| e.to_string())?;
+    if !status.success() {
+        let errors = errors.join().unwrap_or_default();
+        let last = errors
+            .lines()
+            .rev()
+            .find(|l| !l.trim().is_empty())
+            .unwrap_or("");
+        return Err(format!("{program} failed ({status}): {last}"));
+    }
+    Ok(out)
 }
 
 fn emit(events: &Events, event: Event) {
@@ -388,14 +610,20 @@ fn random_key() -> Result<String, String> {
     Ok(bytes.iter().map(|b| format!("{b:02x}")).collect())
 }
 
-/// `minutes summarize <meeting folder>`: writes its `summary.md` and prints it.
+/// `minutes summarize <meeting folder> [--by local|claude|codex]`: writes its
+/// `summary.md` and prints it.
 pub fn cli(args: &[String]) -> glib::ExitCode {
-    let [dir] = args else {
-        return crate::transcribe::usage();
+    let (dir, writer) = match args {
+        [dir] => (dir, Writer::configured()),
+        [dir, by, key] if by == "--by" => match Writer::from_key(key) {
+            Some(writer) => (dir, writer),
+            None => return crate::transcribe::usage(),
+        },
+        _ => return crate::transcribe::usage(),
     };
     let dir = PathBuf::from(dir);
     crate::transcribe::run_cli(|events, abort| {
-        summarize(&dir, events, abort)?;
+        summarize(&dir, writer, events, abort)?;
         std::fs::read_to_string(dir.join(SUMMARY)).map_err(|e| e.to_string())
     })
 }

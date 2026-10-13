@@ -4,7 +4,7 @@ A meeting recorder and transcriber for GNOME. It records your microphone and wha
 
 No bot joins the call and no audio leaves your computer. It works with Teams, Meet, Zoom or anything else that plays sound, because it listens to your devices, not to the meeting service.
 
-> **Status: early.** The engine records, transcribes and tells speakers apart, and is tested. The GNOME app records, transcribes, shows the transcript and writes a summary; a Shell extension shows it in the top bar. It notices calls and offers to record them. Renaming speakers, playback and preferences are still to come.
+> **Status: early.** The engine records, transcribes and tells speakers apart, and is tested. The GNOME app records, transcribes, shows the transcript and writes a summary; a Shell extension shows it in the top bar. It notices calls and offers to record them. Renaming speakers and playback are still to come.
 
 <p align="center"><img src="docs/screenshots/ready.webp" alt="Minutes ready to record: the meeting name, the language, and the Record button" width="320">&nbsp;<img src="docs/screenshots/summary.webp" alt="The summary of a meeting in Minutes: a short summary, the decisions and the action items, each in its own card" width="320">&nbsp;<img src="docs/screenshots/transcript.webp" alt="A transcript in Minutes: each paragraph with its speaker and time, the meetings listed on the left" width="320"></p>
 
@@ -72,7 +72,15 @@ After the transcript, a Summary tab shows the minutes of the meeting: a short su
 
 The summary is written on your computer by [Qwen3.5 4B](https://huggingface.co/Qwen/Qwen3.5-4B) (Apache 2.0) in [llama.cpp](https://github.com/ggml-org/llama.cpp) (MIT), started for the summary and stopped after it, so it leaves the GPU's memory to the next call. The first summary is asked for with a button, as it downloads 2.8 GB: llama.cpp's own Vulkan build (30 MB) and the model; both are fixed versions checked against their SHA-256. After that, every meeting gets its summary once its transcript is done. On an RTX 2050 with 4 GB, an hour of French meeting took 108 and 125 s, with 3.2 GB of the GPU's memory. A meeting longer than an hour and a half is summarized in parts first. Starting a recording stops a summary being written; the button writes it again later.
 
-It is a draft to check: on the two meetings it was tried on, the decisions and the action items were the ones said, but a name or a date can come out wrong when the transcript has them wrong. `summary = false` in the config hides it, and `minutes summarize <meeting folder>` writes one from the command line.
+It is a draft to check: on the two meetings it was tried on, the decisions and the action items were the ones said, but a name or a date can come out wrong when the transcript has them wrong.
+
+When [Claude Code](https://docs.anthropic.com/en/docs/claude-code) (`claude`) or [Codex](https://developers.openai.com/codex) (`codex`) is installed, Preferences can have it write the summaries instead, through your own account. They write better ones: on the bench's demo call, Claude gave each "Remote" the first name said in the call and kept every figure, in 15 s where the model here took 25 s. The transcript and your notes then go to Anthropic or OpenAI, so it is a choice to make knowing who was in the meeting; the summary says under it who wrote it. They run with no tools, in an empty folder, and only read what Minutes gives them. Write Again With, under a summary, has one meeting written by another without changing the setting.
+
+In Preferences, the summary can also be turned off. From the command line, `minutes summarize <meeting folder> [--by local|claude|codex]` writes one.
+
+## Deleting a meeting
+
+The menu at the top right of a meeting has Delete Meeting…: after you confirm, its folder goes to the trash, with the recording, the transcript, the summary and the notes, and can be restored from there. Open Meeting Folder shows the files.
 
 ## Nothing lost
 
@@ -171,7 +179,7 @@ fix = "Okafur => Okafor"
 
 `model` is `large-v3-turbo` unless set. `large-v3-turbo-q5_0` is the same model in 5 bits, a third of the size (574 MB): on this laptop it made a 42-minute French hearing 6 % faster with the same text, but a 17-minute English meeting 10 % slower, as whisper had to try hard passages again more often; worth it mostly when the GPU is short of memory. `large-v3-turbo-q8_0` (874 MB) lost a passage once in the tests. `tiny` to `large-v3` are the other models whisper.cpp offers.
 
-`summary = false` turns the summary off.
+`summary = false` turns the summary off, and `summary_by = "claude"` or `"codex"` has it written by Claude Code or Codex (Preferences sets both).
 
 `prompt` tells whisper the names and words to expect, for the whole recording: on a French meeting it took misspelled work terms from 13 to 2 in 74 minutes. A word it still gets wrong needs a `fix` line, which replaces it in the finished transcript. Both stay on your computer, in your config, and grow as you answer the words to check after a meeting. `ignore = "word"` lines are the words set aside there.
 
@@ -180,6 +188,12 @@ fix = "Okafur => Okafor"
 MIT, like the project it comes from. See [LICENSE](LICENSE).
 
 ## Changelog
+
+### v0.15.0 — Summaries by Claude or Codex, and deleting a meeting (2026-10-13)
+
+- Preferences: whether a summary is written after each meeting, and by whom: this computer, or Claude Code or Codex when installed, which write better summaries through your own account but send the transcript and your notes to Anthropic or OpenAI
+- Under each summary, who wrote it, and Write Again With to have another write it
+- Delete Meeting… in the meeting's menu: after you confirm, the meeting goes to the trash with all its files; Open Meeting Folder shows them
 
 ### v0.14.0 — Notes and a summary (2026-10-13)
 
@@ -330,5 +344,6 @@ MIT, like the project it comes from. See [LICENSE](LICENSE).
 
 | Version | Date       | Changes                                                       |
 |---------|------------|---------------------------------------------------------------|
+| 1.2.0   | 2026-10-13 | Add summaries by Claude or Codex and deleting a meeting       |
 | 1.1.0   | 2026-10-13 | Add notes and summary, show English screenshots               |
 | 1.0.0   | 2026-10-09 | Add the transcript made during the call and this revision log |
