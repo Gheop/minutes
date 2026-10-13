@@ -25,6 +25,11 @@
     <control>pointing</control>
   </supports>
   <releases>
+    <release version="0.15.0" date="2026-10-13">
+      <description>
+        <p>Summaries can be written by Claude Code or Codex when installed, and a meeting can be moved to the trash.</p>
+      </description>
+    </release>
     <release version="0.14.0" date="2026-10-13">
       <description>
         <p>Notes typed during the call, and a summary of each meeting written on your computer: the decisions, the action items and the open questions.</p>

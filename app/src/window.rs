@@ -82,6 +82,8 @@ mod imp {
         #[template_child]
         pub copy_button: TemplateChild<gtk::Button>,
         #[template_child]
+        pub meeting_menu: TemplateChild<gtk::MenuButton>,
+        #[template_child]
         pub recovery_banner: TemplateChild<adw::Banner>,
         #[template_child]
         pub review_banner: TemplateChild<adw::Banner>,
@@ -278,9 +280,29 @@ impl MinutesWindow {
             action("recover", Self::ask_recovery),
             action("open-preview", Self::open_preview),
             action("summarize", Self::summarize_shown),
+            action("preferences", Self::show_preferences),
+            action("open-meeting-folder", Self::open_meeting_folder),
+            action("delete-meeting", Self::ask_delete_meeting),
             action("cancel-summary", Self::cancel_summary),
             action("review", Self::review_words),
         ]);
+        // Write a summary again, with the writer named: `local`, `claude`...
+        self.add_action_entries([gio::ActionEntry::builder("rewrite-summary")
+            .parameter_type(Some(glib::VariantTy::STRING))
+            .activate(|win: &MinutesWindow, _, key| {
+                let writer = key
+                    .and_then(|k| k.str())
+                    .and_then(summary::Writer::from_key);
+                if let (Some(writer), Some(dir)) = (writer, win.imp().shown.borrow().clone()) {
+                    win.summarize(&dir, writer);
+                }
+            })
+            .build()]);
+        // The meeting's menu goes with its Copy button.
+        imp.copy_button
+            .bind_property("visible", &*imp.meeting_menu, "visible")
+            .sync_create()
+            .build();
         self.set_busy(false);
 
         self.connect_map(|win| {
@@ -800,8 +822,9 @@ impl MinutesWindow {
                     win.show_meeting(&dir);
                     win.notify_ready(&dir);
                     // Once the model is here, every meeting gets its summary.
-                    if summary::enabled() && summary::ready() {
-                        win.summarize(&dir);
+                    let writer = summary::Writer::configured();
+                    if summary::enabled() && writer.ready() {
+                        win.summarize(&dir, writer);
                     }
                 }
                 Err(e) if e == CANCELLED => {
@@ -1574,13 +1597,17 @@ impl MinutesWindow {
             imp.summary_stack.set_visible_child_name("writing");
         } else if let Some(text) = &text {
             fill_summary(&imp.summary_box, text, notes.as_deref());
+            imp.summary_box
+                .append(&summary_footer(summary::written_by(dir)));
             imp.summary_stack.set_visible_child_name("done");
         } else {
-            imp.summary_offer.set_description(Some(&if summary::ready() {
-                gettext("Decisions, action items and open questions, written from the transcript and your notes on this computer.")
-            } else {
-                gettext("Decisions, action items and open questions, written from the transcript and your notes on this computer. The first time, Minutes downloads the model that writes it: %d MB.")
-                    .replace("%d", &summary::DOWNLOAD_MB.to_string())
+            let writer = summary::Writer::configured();
+            imp.summary_offer.set_description(Some(&match writer {
+                summary::Writer::Local if summary::ready() => gettext("Decisions, action items and open questions, written from the transcript and your notes on this computer."),
+                summary::Writer::Local => gettext("Decisions, action items and open questions, written from the transcript and your notes on this computer. The first time, Minutes downloads the model that writes it: %d MB.")
+                    .replace("%d", &summary::DOWNLOAD_MB.to_string()),
+                summary::Writer::Claude => gettext("Decisions, action items and open questions, written by Claude from the transcript and your notes, which are sent to Anthropic."),
+                summary::Writer::Codex => gettext("Decisions, action items and open questions, written by Codex from the transcript and your notes, which are sent to OpenAI."),
             }));
             imp.summary_stack.set_visible_child_name("offer");
         }
@@ -1594,12 +1621,13 @@ impl MinutesWindow {
 
     fn summarize_shown(&self) {
         if let Some(dir) = self.imp().shown.borrow().clone() {
-            self.summarize(&dir);
+            self.summarize(&dir, summary::Writer::configured());
         }
     }
 
-    /// Writes the summary of the meeting in `dir`, one meeting at a time.
-    fn summarize(&self, dir: &Path) {
+    /// Writes the summary of the meeting in `dir` with `writer`, one meeting
+    /// at a time.
+    fn summarize(&self, dir: &Path, writer: summary::Writer) {
         let imp = self.imp();
         if imp.summarizing.borrow().is_some() || imp.recording.borrow().is_some() {
             return;
@@ -1615,7 +1643,7 @@ impl MinutesWindow {
         let (done_tx, done_rx) = async_channel::bounded(1);
         let thread_dir = dir.to_path_buf();
         std::thread::spawn(move || {
-            let result = summary::summarize(&thread_dir, &events_tx, &abort);
+            let result = summary::summarize(&thread_dir, writer, &events_tx, &abort);
             let _ = done_tx.send_blocking(result);
             let _ = events_tx.send_blocking(Event::Finished);
         });
@@ -1646,6 +1674,142 @@ impl MinutesWindow {
                 win.toast(&format!("{}: {e}", gettext("Could not write the summary")));
             }
         });
+    }
+
+    /// The settings: whether a summary is written after each meeting, and by
+    /// whom, among those installed here.
+    fn show_preferences(&self) {
+        let writers: Vec<summary::Writer> = summary::Writer::ALL
+            .into_iter()
+            .filter(|w| w.available())
+            .collect();
+        let group = adw::PreferencesGroup::builder()
+            .title(gettext("Summary"))
+            .description(gettext(
+                "On this computer, nothing leaves it. Claude and Codex write better summaries, quicker, through your own account: the transcript and your notes are then sent to Anthropic or OpenAI.",
+            ))
+            .build();
+        let enabled = adw::SwitchRow::builder()
+            .title(gettext("Write a Summary After Each Meeting"))
+            .active(summary::enabled())
+            .build();
+        let names: Vec<String> = writers.iter().map(|w| writer_name(*w)).collect();
+        let by = adw::ComboRow::builder()
+            .title(gettext("Written By"))
+            .model(&gtk::StringList::new(
+                &names.iter().map(String::as_str).collect::<Vec<_>>(),
+            ))
+            .selected(
+                writers
+                    .iter()
+                    .position(|w| *w == summary::Writer::configured())
+                    .unwrap_or(0) as u32,
+            )
+            .build();
+        enabled
+            .bind_property("active", &by, "sensitive")
+            .sync_create()
+            .build();
+        let weak = self.downgrade();
+        enabled.connect_active_notify(move |row| {
+            if let Err(e) = summary::set_enabled(row.is_active()) {
+                minutes_engine::warn(format!("could not save the setting: {e}"));
+            }
+            if let Some(win) = weak.upgrade()
+                && let Some(dir) = win.imp().shown.borrow().clone()
+            {
+                win.show_summary(&dir);
+            }
+        });
+        let weak = self.downgrade();
+        by.connect_selected_notify(move |row| {
+            if let Some(writer) = writers.get(row.selected() as usize)
+                && let Err(e) = writer.choose()
+            {
+                minutes_engine::warn(format!("could not save the setting: {e}"));
+            }
+            if let Some(win) = weak.upgrade()
+                && let Some(dir) = win.imp().shown.borrow().clone()
+            {
+                win.show_summary(&dir);
+            }
+        });
+        group.add(&enabled);
+        group.add(&by);
+        let page = adw::PreferencesPage::new();
+        page.add(&group);
+        let dialog = adw::PreferencesDialog::new();
+        dialog.add(&page);
+        dialog.present(Some(self));
+    }
+
+    fn open_meeting_folder(&self) {
+        if let Some(dir) = self.imp().shown.borrow().clone() {
+            gtk::FileLauncher::new(Some(&gio::File::for_path(dir))).launch(
+                Some(self),
+                gio::Cancellable::NONE,
+                |_| {},
+            );
+        }
+    }
+
+    /// Asks before the meeting shown goes to the trash, with its recording,
+    /// transcript, summary and notes.
+    fn ask_delete_meeting(&self) {
+        let Some(dir) = self.imp().shown.borrow().clone() else {
+            return;
+        };
+        let title = meeting::open(&dir).map_or_else(String::new, |(_, m)| m.title);
+        let dialog = adw::AlertDialog::builder()
+            .heading(gettext("Delete This Meeting?"))
+            .body(
+                gettext("“%s” goes to the trash with its recording, transcript, summary and notes. It can be restored from there.")
+                    .replace("%s", &title),
+            )
+            .default_response("cancel")
+            .close_response("cancel")
+            .build();
+        dialog.add_responses(&[
+            ("cancel", &gettext("_Cancel")),
+            ("delete", &gettext("_Delete")),
+        ]);
+        dialog.set_response_appearance("delete", adw::ResponseAppearance::Destructive);
+        let weak = self.downgrade();
+        dialog.connect_response(None, move |_, response| {
+            if response == "delete"
+                && let Some(win) = weak.upgrade()
+            {
+                win.delete_meeting(&dir);
+            }
+        });
+        dialog.present(Some(self));
+    }
+
+    fn delete_meeting(&self, dir: &Path) {
+        let imp = self.imp();
+        if imp
+            .summarizing
+            .borrow()
+            .as_ref()
+            .is_some_and(|(d, _)| d == dir)
+        {
+            self.cancel_summary();
+        }
+        if let Some(player) = imp.player.borrow_mut().take() {
+            player.pause();
+        }
+        // The trash, not a deletion: a meeting deleted by mistake comes back.
+        match gio::File::for_path(dir).trash(gio::Cancellable::NONE) {
+            Ok(()) => {
+                self.load_meetings();
+                self.show_ready();
+                self.toast(&gettext("Meeting moved to the trash"));
+            }
+            Err(e) => self.toast(&format!(
+                "{}: {e}",
+                gettext("Could not move the meeting to the trash")
+            )),
+        }
     }
 
     fn cancel_summary(&self) {
@@ -1713,6 +1877,52 @@ fn fill_summary(into: &gtk::Box, markdown: &str, notes: Option<&str>) {
         group.add(&card);
         into.append(&group);
     }
+}
+
+/// The name of `writer` in the settings and under a summary.
+fn writer_name(writer: summary::Writer) -> String {
+    match writer {
+        summary::Writer::Local => gettext("This Computer"),
+        summary::Writer::Claude => gettext("Claude (claude -p)"),
+        summary::Writer::Codex => gettext("Codex (codex exec)"),
+    }
+}
+
+/// Under a summary: who wrote it, and a menu to write it again with any
+/// writer installed here.
+fn summary_footer(by: Option<summary::Writer>) -> gtk::Widget {
+    let label = gtk::Label::builder()
+        .label(match by {
+            Some(summary::Writer::Claude) => {
+                gettext("Written by Claude, from the transcript sent to Anthropic")
+            }
+            Some(summary::Writer::Codex) => {
+                gettext("Written by Codex, from the transcript sent to OpenAI")
+            }
+            _ => gettext("Written on this computer"),
+        })
+        .wrap(true)
+        .xalign(0.0)
+        .hexpand(true)
+        .css_classes(["dimmed", "caption"])
+        .build();
+    let menu = gio::Menu::new();
+    for writer in summary::Writer::ALL.into_iter().filter(|w| w.available()) {
+        menu.append(
+            Some(&writer_name(writer)),
+            Some(&format!("win.rewrite-summary::{}", writer.key())),
+        );
+    }
+    let button = gtk::MenuButton::builder()
+        .label(gettext("Write Again With"))
+        .menu_model(&menu)
+        .css_classes(["flat"])
+        .valign(gtk::Align::Center)
+        .build();
+    let footer = gtk::Box::builder().spacing(12).build();
+    footer.append(&label);
+    footer.append(&button);
+    footer.upcast()
 }
 
 /// A line of the summary: a paragraph, or a bullet whose text lines up after

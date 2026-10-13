@@ -2291,7 +2291,7 @@ pub(crate) fn usage() -> glib::ExitCode {
         "       {APP_NAME} transcribe-file <audio> [--speakers N] [--language auto|en|nl|...] [--model name]"
     );
     eprintln!("       {APP_NAME} write-up <recording folder> [--into folder] [--model name]");
-    eprintln!("       {APP_NAME} summarize <meeting folder>");
+    eprintln!("       {APP_NAME} summarize <meeting folder> [--by local|claude|codex]");
     glib::ExitCode::from(2)
 }
 

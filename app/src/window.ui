@@ -2,11 +2,29 @@
 <interface>
   <requires lib="gtk" version="4.12"/>
   <requires lib="libadwaita" version="1.6"/>
+  <menu id="meeting_menu_model">
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">_Open Meeting Folder</attribute>
+        <attribute name="action">win.open-meeting-folder</attribute>
+      </item>
+    </section>
+    <section>
+      <item>
+        <attribute name="label" translatable="yes">_Delete Meeting…</attribute>
+        <attribute name="action">win.delete-meeting</attribute>
+      </item>
+    </section>
+  </menu>
   <menu id="primary_menu">
     <section>
       <item>
         <attribute name="label" translatable="yes">_Open Meetings Folder</attribute>
         <attribute name="action">win.open-folder</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">_Preferences</attribute>
+        <attribute name="action">win.preferences</attribute>
       </item>
       <item>
         <attribute name="label" translatable="yes">_About Minutes</attribute>
@@ -101,6 +119,14 @@
                   <object class="AdwToolbarView">
                     <child type="top">
                       <object class="AdwHeaderBar">
+                        <child type="end">
+                          <object class="GtkMenuButton" id="meeting_menu">
+                            <property name="icon-name">view-more-symbolic</property>
+                            <property name="tooltip-text" translatable="yes">Meeting Menu</property>
+                            <property name="menu-model">meeting_menu_model</property>
+                            <property name="visible">False</property>
+                          </object>
+                        </child>
                         <child type="end">
                           <object class="GtkButton" id="copy_button">
                             <property name="icon-name">edit-copy-symbolic</property>
