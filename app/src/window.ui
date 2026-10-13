@@ -5,6 +5,10 @@
   <menu id="meeting_menu_model">
     <section>
       <item>
+        <attribute name="label" translatable="yes">_Rename Meeting…</attribute>
+        <attribute name="action">win.rename-meeting</attribute>
+      </item>
+      <item>
         <attribute name="label" translatable="yes">_Open Meeting Folder</attribute>
         <attribute name="action">win.open-meeting-folder</attribute>
       </item>

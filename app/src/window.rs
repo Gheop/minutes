@@ -283,6 +283,7 @@ impl MinutesWindow {
             action("preferences", Self::show_preferences),
             action("open-meeting-folder", Self::open_meeting_folder),
             action("delete-meeting", Self::ask_delete_meeting),
+            action("rename-meeting", Self::ask_rename_meeting),
             action("cancel-summary", Self::cancel_summary),
             action("review", Self::review_words),
         ]);
@@ -1750,6 +1751,81 @@ impl MinutesWindow {
                 gio::Cancellable::NONE,
                 |_| {},
             );
+        }
+    }
+
+    /// Asks for the new name of the meeting shown.
+    fn ask_rename_meeting(&self) {
+        let Some(dir) = self.imp().shown.borrow().clone() else {
+            return;
+        };
+        let title = meeting::open(&dir).map_or_else(String::new, |(_, m)| m.title);
+        let entry = gtk::Entry::builder()
+            .text(&title)
+            .activates_default(true)
+            .build();
+        let dialog = adw::AlertDialog::builder()
+            .heading(gettext("Rename Meeting"))
+            .extra_child(&entry)
+            .default_response("rename")
+            .close_response("cancel")
+            .build();
+        dialog.add_responses(&[
+            ("cancel", &gettext("_Cancel")),
+            ("rename", &gettext("_Rename")),
+        ]);
+        dialog.set_response_appearance("rename", adw::ResponseAppearance::Suggested);
+        // Nothing to rename to: an empty name, or the same one.
+        let update = {
+            let dialog = dialog.clone();
+            move |entry: &gtk::Entry| {
+                let text = entry.text();
+                let name = text.trim();
+                dialog.set_response_enabled("rename", !name.is_empty() && name != title);
+            }
+        };
+        update(&entry);
+        entry.connect_changed(update);
+        let weak = self.downgrade();
+        dialog.connect_response(None, move |dialog, response| {
+            let Some(win) = weak.upgrade() else {
+                return;
+            };
+            if response != "rename" {
+                return;
+            }
+            let Some(entry) = dialog.extra_child().and_downcast::<gtk::Entry>() else {
+                return;
+            };
+            win.rename_meeting(&dir, &entry.text());
+        });
+        dialog.present(Some(self));
+        entry.grab_focus();
+    }
+
+    fn rename_meeting(&self, dir: &Path, title: &str) {
+        let imp = self.imp();
+        // Its folder moves: a summary being written there would be lost.
+        if imp
+            .summarizing
+            .borrow()
+            .as_ref()
+            .is_some_and(|(d, _)| d == dir)
+        {
+            self.toast(&gettext(
+                "Wait for the summary to be written before renaming",
+            ));
+            return;
+        }
+        if let Some(player) = imp.player.borrow_mut().take() {
+            player.pause();
+        }
+        match session::rename(dir, title) {
+            Ok(moved) => {
+                self.load_meetings();
+                self.show_meeting(&moved);
+            }
+            Err(e) => self.toast(&format!("{}: {e}", gettext("Could not rename the meeting"))),
         }
     }
 

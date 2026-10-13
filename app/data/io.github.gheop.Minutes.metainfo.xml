@@ -25,6 +25,11 @@
     <control>pointing</control>
   </supports>
   <releases>
+    <release version="0.16.0" date="2026-10-13">
+      <description>
+        <p>A meeting can be renamed: in the list, in its transcript and on its folder.</p>
+      </description>
+    </release>
     <release version="0.15.0" date="2026-10-13">
       <description>
         <p>Summaries can be written by Claude Code or Codex when installed, and a meeting can be moved to the trash.</p>

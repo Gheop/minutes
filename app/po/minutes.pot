@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: minutes\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-13 12:01+0200\n"
+"POT-Creation-Date: 2026-10-13 13:06+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -19,171 +19,176 @@ msgstr ""
 "Plural-Forms: nplurals=INTEGER; plural=EXPRESSION;\n"
 
 #: app/src/window.ui:8
+msgid "_Rename Meeting…"
+msgstr ""
+
+#: app/src/window.ui:12
 msgid "_Open Meeting Folder"
 msgstr ""
 
-#: app/src/window.ui:14
+#: app/src/window.ui:18
 msgid "_Delete Meeting…"
 msgstr ""
 
-#: app/src/window.ui:22
+#: app/src/window.ui:26
 msgid "_Open Meetings Folder"
 msgstr ""
 
-#: app/src/window.ui:26
+#: app/src/window.ui:30
 msgid "_Preferences"
 msgstr ""
 
-#: app/src/window.ui:30
+#: app/src/window.ui:34
 msgid "_About Minutes"
 msgstr ""
 
-#: app/src/window.ui:36 app/src/window.ui:53 app/src/main.rs:83
+#: app/src/window.ui:40 app/src/window.ui:57 app/src/main.rs:83
 #: app/src/main.rs:226
 msgid "Minutes"
 msgstr ""
 
-#: app/src/window.ui:61 app/src/window.ui:117 app/src/window.rs:527
+#: app/src/window.ui:65 app/src/window.ui:121 app/src/window.rs:528
 msgid "New Recording"
 msgstr ""
 
-#: app/src/window.ui:70
+#: app/src/window.ui:74
 msgid "Main Menu"
 msgstr ""
 
-#: app/src/window.ui:83
+#: app/src/window.ui:87
 msgid "No Meetings Yet"
 msgstr ""
 
-#: app/src/window.ui:84
+#: app/src/window.ui:88
 msgid "Recorded meetings appear here"
 msgstr ""
 
-#: app/src/window.ui:125
+#: app/src/window.ui:129
 msgid "Meeting Menu"
 msgstr ""
 
-#: app/src/window.ui:133
+#: app/src/window.ui:137
 msgid "Copy Transcript"
 msgstr ""
 
-#: app/src/window.ui:142
+#: app/src/window.ui:146
 msgid "_Recover…"
 msgstr ""
 
-#: app/src/window.ui:148
+#: app/src/window.ui:152
 msgid "_Check…"
 msgstr ""
 
-#: app/src/window.ui:161
+#: app/src/window.ui:165
 msgid "Ready to Record"
 msgstr ""
 
-#: app/src/window.ui:162
+#: app/src/window.ui:166
 msgid ""
 "Minutes records your microphone and what your computer plays, then writes "
 "the transcript on this computer"
 msgstr ""
 
-#: app/src/window.ui:172
+#: app/src/window.ui:176
 msgid "_Record"
 msgstr ""
 
-#: app/src/window.ui:186
+#: app/src/window.ui:190
 msgid "Meeting Name"
 msgstr ""
 
-#: app/src/window.ui:191
+#: app/src/window.ui:195
 msgid "Language"
 msgstr ""
 
-#: app/src/window.ui:198
+#: app/src/window.ui:202
 msgid "Sound"
 msgstr ""
 
-#: app/src/window.ui:201 app/src/window.ui:250
+#: app/src/window.ui:205 app/src/window.ui:254
 msgid "Your Microphone"
 msgstr ""
 
-#: app/src/window.ui:212 app/src/window.ui:261
+#: app/src/window.ui:216 app/src/window.ui:265
 msgid "Computer Audio"
 msgstr ""
 
-#: app/src/window.ui:238 app/src/window.rs:600 app/src/window.rs:657
+#: app/src/window.ui:242 app/src/window.rs:601 app/src/window.rs:658
 msgid "Recording"
 msgstr ""
 
-#: app/src/window.ui:278 app/src/window.rs:598 app/src/window.rs:635
+#: app/src/window.ui:282 app/src/window.rs:599 app/src/window.rs:636
 msgid "_Pause"
 msgstr ""
 
-#: app/src/window.ui:288 app/src/window.rs:1283
+#: app/src/window.ui:292 app/src/window.rs:1284
 msgid "_Mute My Microphone"
 msgstr ""
 
-#: app/src/window.ui:298
+#: app/src/window.ui:302
 msgid "_Stop"
 msgstr ""
 
-#: app/src/window.ui:311
+#: app/src/window.ui:315
 msgid "Notes"
 msgstr ""
 
-#: app/src/window.ui:312
+#: app/src/window.ui:316
 msgid "A few words on what matters to you: the summary starts from them"
 msgstr ""
 
-#: app/src/window.ui:341
+#: app/src/window.ui:345
 msgid "Preview"
 msgstr ""
 
-#: app/src/window.ui:342
+#: app/src/window.ui:346
 msgid "Written as the call goes on; the transcript made at the end is better"
 msgstr ""
 
-#: app/src/window.ui:374
+#: app/src/window.ui:378
 msgid "Writing the Transcript"
 msgstr ""
 
-#: app/src/window.ui:394
+#: app/src/window.ui:398
 msgid ""
 "The preview written during the call is ready now; the better transcript "
 "follows."
 msgstr ""
 
-#: app/src/window.ui:408
+#: app/src/window.ui:412
 msgid "Copy the Preview"
 msgstr ""
 
-#: app/src/window.ui:417
+#: app/src/window.ui:421
 msgid "Open the Preview"
 msgstr ""
 
-#: app/src/window.ui:430 app/src/window.ui:520 app/src/window.rs:1772
+#: app/src/window.ui:434 app/src/window.ui:524 app/src/window.rs:1774
+#: app/src/window.rs:1847
 msgid "_Cancel"
 msgstr ""
 
-#: app/src/window.ui:467 app/src/window.rs:1687
+#: app/src/window.ui:471 app/src/window.rs:1688
 msgid "Summary"
 msgstr ""
 
-#: app/src/window.ui:477
+#: app/src/window.ui:481
 msgid "No Summary Yet"
 msgstr ""
 
-#: app/src/window.ui:480
+#: app/src/window.ui:484
 msgid "_Write the Summary"
 msgstr ""
 
-#: app/src/window.ui:504
+#: app/src/window.ui:508
 msgid "Writing the Summary"
 msgstr ""
 
-#: app/src/window.ui:505
+#: app/src/window.ui:509
 msgid "About 2 minutes for an hour of meeting, on this computer"
 msgstr ""
 
-#: app/src/window.ui:569
+#: app/src/window.ui:573
 msgid "Transcript"
 msgstr ""
 
@@ -191,355 +196,371 @@ msgstr ""
 msgid "Stop the recording before closing"
 msgstr ""
 
-#: app/src/window.rs:382
+#: app/src/window.rs:383
 msgid "Recording stopped"
 msgstr ""
 
-#: app/src/window.rs:384
+#: app/src/window.rs:385
 msgid "The call in %s ended; the transcript is being written."
 msgstr ""
 
-#: app/src/window.rs:397
+#: app/src/window.rs:398
 msgid "Call in %s"
 msgstr ""
 
-#: app/src/window.rs:399
+#: app/src/window.rs:400
 msgid "Record it with Minutes? Tell the others first."
 msgstr ""
 
-#: app/src/window.rs:401
+#: app/src/window.rs:402
 msgid "Record"
 msgstr ""
 
-#: app/src/window.rs:549
+#: app/src/window.rs:550
 msgid "Meeting %H:%M"
 msgstr ""
 
-#: app/src/window.rs:550
+#: app/src/window.rs:551
 msgid "Meeting"
 msgstr ""
 
-#: app/src/window.rs:570
+#: app/src/window.rs:571
 msgid "Could not start recording"
 msgstr ""
 
-#: app/src/window.rs:633
+#: app/src/window.rs:634
 msgid "_Resume"
 msgstr ""
 
-#: app/src/window.rs:649
+#: app/src/window.rs:650
 msgid "Paused"
 msgstr ""
 
-#: app/src/window.rs:651
+#: app/src/window.rs:652
 msgid "Recording, your microphone muted"
 msgstr ""
 
-#: app/src/window.rs:653
+#: app/src/window.rs:654
 msgid "Recording, your microphone muted as in Teams"
 msgstr ""
 
-#: app/src/window.rs:655
+#: app/src/window.rs:656
 msgid ""
 "Recording, but your microphone sends nothing: a headset asleep or taken off?"
 msgstr ""
 
-#: app/src/window.rs:706
+#: app/src/window.rs:707
 msgid "An interrupted recording was found (%s min)"
 msgstr ""
 
-#: app/src/window.rs:714
+#: app/src/window.rs:715
 msgid "An interrupted recording was found"
 msgstr ""
 
-#: app/src/window.rs:716
+#: app/src/window.rs:717
 msgid "Open Minutes to write its transcript or delete it."
 msgstr ""
 
-#: app/src/window.rs:730 app/src/window.rs:773
+#: app/src/window.rs:731 app/src/window.rs:774
 msgid "Recovered Recording"
 msgstr ""
 
-#: app/src/window.rs:733
+#: app/src/window.rs:734
 msgid "Recover the interrupted recording?"
 msgstr ""
 
-#: app/src/window.rs:737
+#: app/src/window.rs:738
 msgid "_Later"
 msgstr ""
 
-#: app/src/window.rs:738 app/src/window.rs:1772
+#: app/src/window.rs:739 app/src/window.rs:1848
 msgid "_Delete"
 msgstr ""
 
-#: app/src/window.rs:739
+#: app/src/window.rs:740
 msgid "_Recover"
 msgstr ""
 
-#: app/src/window.rs:754
+#: app/src/window.rs:755
 msgid "Interrupted recording deleted"
 msgstr ""
 
-#: app/src/window.rs:767
+#: app/src/window.rs:768
 msgid "Finish the current recording first"
 msgstr ""
 
-#: app/src/window.rs:804
+#: app/src/window.rs:805
 msgid "Saving the audio"
 msgstr ""
 
-#: app/src/window.rs:831
+#: app/src/window.rs:832
 msgid "Transcript cancelled; the audio is kept"
 msgstr ""
 
-#: app/src/window.rs:837
+#: app/src/window.rs:838
 msgid "Could not write the transcript"
 msgstr ""
 
-#: app/src/window.rs:985
+#: app/src/window.rs:986
 msgid "This meeting could not be read"
 msgstr ""
 
-#: app/src/window.rs:999
+#: app/src/window.rs:1000
 msgid "Nobody was heard in this meeting."
 msgstr ""
 
-#: app/src/window.rs:1022
+#: app/src/window.rs:1023
 msgid "%d word to check"
 msgid_plural "%d words to check"
 msgstr[0] ""
 msgstr[1] ""
 
-#: app/src/window.rs:1042
+#: app/src/window.rs:1043
 msgid ""
 "Whisper was unsure of these words, or wrote them several ways. What you keep "
 "is corrected here and goes to your settings, so the next meetings get it "
 "right; what you set aside is not asked again."
 msgstr ""
 
-#: app/src/window.rs:1053
+#: app/src/window.rs:1054
 msgid "Words to Check"
 msgstr ""
 
-#: app/src/window.rs:1087
+#: app/src/window.rs:1088
 msgid "Spelling"
 msgstr ""
 
-#: app/src/window.rs:1098
+#: app/src/window.rs:1099
 msgid "Listen"
 msgstr ""
 
-#: app/src/window.rs:1099
+#: app/src/window.rs:1100
 msgid "Keep This Spelling"
 msgstr ""
 
-#: app/src/window.rs:1100
+#: app/src/window.rs:1101
 msgid "Set Aside"
 msgstr ""
 
-#: app/src/window.rs:1144
+#: app/src/window.rs:1145
 msgid "This meeting has no audio to play"
 msgstr ""
 
-#: app/src/window.rs:1185
+#: app/src/window.rs:1186
 msgid "Could not keep the word"
 msgstr ""
 
-#: app/src/window.rs:1197
+#: app/src/window.rs:1198
 msgid "Could not set the word aside"
 msgstr ""
 
-#: app/src/window.rs:1259
+#: app/src/window.rs:1260
 msgid "You"
 msgstr ""
 
-#: app/src/window.rs:1262
+#: app/src/window.rs:1263
 msgid "Others"
 msgstr ""
 
-#: app/src/window.rs:1281
+#: app/src/window.rs:1282
 msgid "_Unmute My Microphone"
 msgstr ""
 
-#: app/src/window.rs:1513
+#: app/src/window.rs:1514
 msgid "preview"
 msgstr ""
 
-#: app/src/window.rs:1527
+#: app/src/window.rs:1528
 msgid "Preview copied"
 msgstr ""
 
-#: app/src/window.rs:1551
+#: app/src/window.rs:1552
 msgid "Transcript ready"
 msgstr ""
 
-#: app/src/window.rs:1570
+#: app/src/window.rs:1571
 msgid "Summary copied"
 msgstr ""
 
-#: app/src/window.rs:1574
+#: app/src/window.rs:1575
 msgid "Transcript copied"
 msgstr ""
 
-#: app/src/window.rs:1606
+#: app/src/window.rs:1607
 msgid ""
 "Decisions, action items and open questions, written from the transcript and "
 "your notes on this computer."
 msgstr ""
 
-#: app/src/window.rs:1607
+#: app/src/window.rs:1608
 msgid ""
 "Decisions, action items and open questions, written from the transcript and "
 "your notes on this computer. The first time, Minutes downloads the model "
 "that writes it: %d MB."
 msgstr ""
 
-#: app/src/window.rs:1609
+#: app/src/window.rs:1610
 msgid ""
 "Decisions, action items and open questions, written by Claude from the "
 "transcript and your notes, which are sent to Anthropic."
 msgstr ""
 
-#: app/src/window.rs:1610
+#: app/src/window.rs:1611
 msgid ""
 "Decisions, action items and open questions, written by Codex from the "
 "transcript and your notes, which are sent to OpenAI."
 msgstr ""
 
-#: app/src/window.rs:1674
+#: app/src/window.rs:1675
 msgid "Could not write the summary"
 msgstr ""
 
-#: app/src/window.rs:1689
+#: app/src/window.rs:1690
 msgid ""
 "On this computer, nothing leaves it. Claude and Codex write better "
 "summaries, quicker, through your own account: the transcript and your notes "
 "are then sent to Anthropic or OpenAI."
 msgstr ""
 
-#: app/src/window.rs:1693
+#: app/src/window.rs:1694
 msgid "Write a Summary After Each Meeting"
 msgstr ""
 
-#: app/src/window.rs:1698
+#: app/src/window.rs:1699
 msgid "Written By"
 msgstr ""
 
-#: app/src/window.rs:1764
+#: app/src/window.rs:1768
+msgid "Rename Meeting"
+msgstr ""
+
+#: app/src/window.rs:1775
+msgid "_Rename"
+msgstr ""
+
+#: app/src/window.rs:1815
+msgid "Wait for the summary to be written before renaming"
+msgstr ""
+
+#: app/src/window.rs:1826
+msgid "Could not rename the meeting"
+msgstr ""
+
+#: app/src/window.rs:1838
 msgid "Delete This Meeting?"
 msgstr ""
 
-#: app/src/window.rs:1766
+#: app/src/window.rs:1840
 msgid ""
 "“%s” goes to the trash with its recording, transcript, summary and notes. It "
 "can be restored from there."
 msgstr ""
 
-#: app/src/window.rs:1803
+#: app/src/window.rs:1880
 msgid "Meeting moved to the trash"
 msgstr ""
 
-#: app/src/window.rs:1807
+#: app/src/window.rs:1884
 msgid "Could not move the meeting to the trash"
 msgstr ""
 
-#: app/src/window.rs:1855
+#: app/src/window.rs:1932
 msgid "Your Notes"
 msgstr ""
 
-#: app/src/window.rs:1882
+#: app/src/window.rs:1959
 msgid "This Computer"
 msgstr ""
 
-#: app/src/window.rs:1883
+#: app/src/window.rs:1960
 msgid "Claude (claude -p)"
 msgstr ""
 
-#: app/src/window.rs:1884
+#: app/src/window.rs:1961
 msgid "Codex (codex exec)"
 msgstr ""
 
-#: app/src/window.rs:1893
+#: app/src/window.rs:1971
 msgid "Written by Claude, from the transcript sent to Anthropic"
 msgstr ""
 
-#: app/src/window.rs:1894
+#: app/src/window.rs:1974
 msgid "Written by Codex, from the transcript sent to OpenAI"
 msgstr ""
 
-#: app/src/window.rs:1895
+#: app/src/window.rs:1976
 msgid "Written on this computer"
 msgstr ""
 
-#: app/src/window.rs:1910
+#: app/src/window.rs:1991
 msgid "Write Again With"
 msgstr ""
 
-#: app/src/window.rs:2035
+#: app/src/window.rs:2116
 msgid "Writing the summary"
 msgstr ""
 
-#: app/src/window.rs:2036
+#: app/src/window.rs:2117
 msgid "Downloading llama.cpp"
 msgstr ""
 
-#: app/src/window.rs:2037
+#: app/src/window.rs:2118
 msgid "Downloading the summary model"
 msgstr ""
 
-#: app/src/window.rs:2038
+#: app/src/window.rs:2119
 msgid "Loading the audio"
 msgstr ""
 
-#: app/src/window.rs:2039
+#: app/src/window.rs:2120
 msgid "Telling the voices apart"
 msgstr ""
 
-#: app/src/window.rs:2040
+#: app/src/window.rs:2121
 msgid "Loading the speech model"
 msgstr ""
 
-#: app/src/window.rs:2041
+#: app/src/window.rs:2122
 msgid "Transcribing"
 msgstr ""
 
-#: app/src/window.rs:2042
+#: app/src/window.rs:2123
 msgid "Downloading the speech model"
 msgstr ""
 
-#: app/src/window.rs:2043
+#: app/src/window.rs:2124
 msgid "Downloading the speaker model"
 msgstr ""
 
-#: app/src/window.rs:2050
+#: app/src/window.rs:2131
 msgid "Detect Automatically"
 msgstr ""
 
-#: app/src/window.rs:2051
+#: app/src/window.rs:2132
 msgid "English"
 msgstr ""
 
-#: app/src/window.rs:2052
+#: app/src/window.rs:2133
 msgid "French"
 msgstr ""
 
-#: app/src/window.rs:2053
+#: app/src/window.rs:2134
 msgid "Dutch"
 msgstr ""
 
-#: app/src/window.rs:2054
+#: app/src/window.rs:2135
 msgid "German"
 msgstr ""
 
-#: app/src/window.rs:2055
+#: app/src/window.rs:2136
 msgid "Spanish"
 msgstr ""
 
-#: app/src/window.rs:2056
+#: app/src/window.rs:2137
 msgid "Italian"
 msgstr ""
 
-#: app/src/window.rs:2057
+#: app/src/window.rs:2138
 msgid "Portuguese"
 msgstr ""
 
