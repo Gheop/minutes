@@ -78,9 +78,9 @@ When [Claude Code](https://docs.anthropic.com/en/docs/claude-code) (`claude`) or
 
 In Preferences, the summary can also be turned off. From the command line, `minutes summarize <meeting folder> [--by local|claude|codex]` writes one.
 
-## Deleting a meeting
+## Renaming and deleting a meeting
 
-The menu at the top right of a meeting has Delete Meeting…: after you confirm, its folder goes to the trash, with the recording, the transcript, the summary and the notes, and can be restored from there. Open Meeting Folder shows the files.
+The menu at the top right of a meeting has Rename Meeting…: the new name goes to the meeting list, the transcript's heading and the folder, which keeps its date in front ("202609260930 Theme Picker Review"). It also has Delete Meeting…: after you confirm, its folder goes to the trash, with the recording, the transcript, the summary and the notes, and can be restored from there. Open Meeting Folder shows the files.
 
 ## Nothing lost
 
@@ -188,6 +188,10 @@ fix = "Okafur => Okafor"
 MIT, like the project it comes from. See [LICENSE](LICENSE).
 
 ## Changelog
+
+### v0.16.0 — Renaming a meeting (2026-10-13)
+
+- Rename Meeting… in the meeting's menu: the name changes in the list, in the transcript's heading and on the folder, which keeps its date
 
 ### v0.15.0 — Summaries by Claude or Codex, and deleting a meeting (2026-10-13)
 
@@ -344,6 +348,7 @@ MIT, like the project it comes from. See [LICENSE](LICENSE).
 
 | Version | Date       | Changes                                                       |
 |---------|------------|---------------------------------------------------------------|
+| 1.3.0   | 2026-10-13 | Add renaming a meeting                                        |
 | 1.2.0   | 2026-10-13 | Add summaries by Claude or Codex and deleting a meeting       |
 | 1.1.0   | 2026-10-13 | Add notes and summary, show English screenshots               |
 | 1.0.0   | 2026-10-09 | Add the transcript made during the call and this revision log |

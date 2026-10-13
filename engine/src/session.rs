@@ -156,6 +156,38 @@ pub fn meeting_dir(root: &Path, started_at: i64, title: &str) -> PathBuf {
         .expect("a free name")
 }
 
+/// Renames the meeting in `dir` to `title`: its manifest, the heading of its
+/// transcripts, and its folder, which keeps its date in front. Returns the
+/// folder, moved when its name changed.
+pub fn rename(dir: &Path, title: &str) -> Result<PathBuf, String> {
+    let title = title.trim();
+    if title.is_empty() {
+        return Err("a meeting needs a name".into());
+    }
+    let (dir, mut manifest) =
+        meeting::open(dir).ok_or_else(|| format!("no meeting in {}", dir.display()))?;
+    manifest.title = title.to_owned();
+    meeting::write(&dir, &manifest).map_err(|e| format!("could not rename the meeting: {e}"))?;
+    for file in ["transcript.md", "transcript-preview.md"] {
+        let path = dir.join(file);
+        if let Ok(text) = std::fs::read_to_string(&path)
+            && let Some(rest) = text.strip_prefix("# ")
+        {
+            let body = rest.split_once('\n').map_or("", |(_, body)| body);
+            let _ = std::fs::write(&path, format!("# {title}\n{body}"));
+        }
+    }
+    let Some(root) = dir.parent() else {
+        return Ok(dir);
+    };
+    let target = meeting_dir(root, manifest.started_at, title);
+    if target == dir {
+        return Ok(dir);
+    }
+    std::fs::rename(&dir, &target).map_err(|e| format!("could not rename the folder: {e}"))?;
+    Ok(target)
+}
+
 /// Writes the audio of a finished recording into its meeting folder, in the
 /// format asked for, plus the two tracks kept to transcribe again.
 /// Returns whether each of the two went well: (audio, tracks).
@@ -525,6 +557,43 @@ mod tests {
             speaker_count: None,
             model: None,
         }
+    }
+
+    #[test]
+    fn a_renamed_meeting_keeps_its_date_and_its_files() {
+        let root = scratch("rename");
+        let mut manifest = recording(&["You", "Remote"]);
+        manifest.started_at = 1_790_000_000;
+        let dir = meeting_dir(&root, manifest.started_at, "Budget");
+        std::fs::create_dir_all(&dir).unwrap();
+        meeting::write(&dir, &manifest).unwrap();
+        std::fs::write(
+            dir.join("transcript.md"),
+            "# Budget\n\n**[00:01] You:** Hi.\n",
+        )
+        .unwrap();
+        std::fs::write(dir.join("summary.md"), "## Summary\nHi.\n").unwrap();
+        // Another meeting already has the name, at another time.
+        let taken = meeting_dir(&root, manifest.started_at, "Budget 2027");
+        std::fs::create_dir_all(&taken).unwrap();
+
+        let moved = rename(&dir, "  Budget 2027 ").unwrap();
+        assert!(!dir.exists());
+        let name = moved.file_name().unwrap().to_string_lossy().into_owned();
+        let stamp = dir.file_name().unwrap().to_string_lossy();
+        let stamp = stamp.split(' ').next().unwrap();
+        assert_eq!(name, format!("{stamp} Budget 2027 2"));
+        let (_, renamed) = meeting::open(&moved).unwrap();
+        assert_eq!(renamed.title, "Budget 2027");
+        assert_eq!(
+            std::fs::read_to_string(moved.join("transcript.md")).unwrap(),
+            "# Budget 2027\n\n**[00:01] You:** Hi.\n"
+        );
+        assert!(moved.join("summary.md").exists());
+        // The same name again: nothing moves.
+        assert_eq!(rename(&moved, "Budget 2027").unwrap(), moved);
+        assert!(rename(&moved, " ").is_err());
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
