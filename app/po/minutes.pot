@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: minutes\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-13 13:06+0200\n"
+"POT-Creation-Date: 2026-10-15 17:25+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -141,7 +141,7 @@ msgstr ""
 msgid "Preview"
 msgstr ""
 
-#: app/src/window.ui:346
+#: app/src/window.ui:346 app/src/window.rs:1380
 msgid "Written as the call goes on; the transcript made at the end is better"
 msgstr ""
 
@@ -163,12 +163,12 @@ msgstr ""
 msgid "Open the Preview"
 msgstr ""
 
-#: app/src/window.ui:434 app/src/window.ui:524 app/src/window.rs:1774
-#: app/src/window.rs:1847
+#: app/src/window.ui:434 app/src/window.ui:524 app/src/window.rs:1797
+#: app/src/window.rs:1872
 msgid "_Cancel"
 msgstr ""
 
-#: app/src/window.ui:471 app/src/window.rs:1688
+#: app/src/window.ui:471 app/src/window.rs:1711
 msgid "Summary"
 msgstr ""
 
@@ -273,7 +273,7 @@ msgstr ""
 msgid "_Later"
 msgstr ""
 
-#: app/src/window.rs:739 app/src/window.rs:1848
+#: app/src/window.rs:739 app/src/window.rs:1873
 msgid "_Delete"
 msgstr ""
 
@@ -366,201 +366,214 @@ msgstr ""
 msgid "_Unmute My Microphone"
 msgstr ""
 
-#: app/src/window.rs:1514
+#: app/src/window.rs:1433
+#, rust-format
+msgid ""
+"Behind the call: whisper runs on {device}, slower than people speak. After a "
+"graphics driver update, restart the computer to get the usual GPU back."
+msgstr ""
+
+#: app/src/window.rs:1438
+msgid ""
+"Behind the call: whisper runs on the processor, slower than people speak. "
+"After a graphics driver update, restart the computer to get the GPU back."
+msgstr ""
+
+#: app/src/window.rs:1537
 msgid "preview"
 msgstr ""
 
-#: app/src/window.rs:1528
+#: app/src/window.rs:1551
 msgid "Preview copied"
 msgstr ""
 
-#: app/src/window.rs:1552
+#: app/src/window.rs:1575
 msgid "Transcript ready"
 msgstr ""
 
-#: app/src/window.rs:1571
+#: app/src/window.rs:1594
 msgid "Summary copied"
 msgstr ""
 
-#: app/src/window.rs:1575
+#: app/src/window.rs:1598
 msgid "Transcript copied"
 msgstr ""
 
-#: app/src/window.rs:1607
+#: app/src/window.rs:1630
 msgid ""
 "Decisions, action items and open questions, written from the transcript and "
 "your notes on this computer."
 msgstr ""
 
-#: app/src/window.rs:1608
+#: app/src/window.rs:1631
 msgid ""
 "Decisions, action items and open questions, written from the transcript and "
 "your notes on this computer. The first time, Minutes downloads the model "
 "that writes it: %d MB."
 msgstr ""
 
-#: app/src/window.rs:1610
+#: app/src/window.rs:1633
 msgid ""
 "Decisions, action items and open questions, written by Claude from the "
 "transcript and your notes, which are sent to Anthropic."
 msgstr ""
 
-#: app/src/window.rs:1611
+#: app/src/window.rs:1634
 msgid ""
 "Decisions, action items and open questions, written by Codex from the "
 "transcript and your notes, which are sent to OpenAI."
 msgstr ""
 
-#: app/src/window.rs:1675
+#: app/src/window.rs:1698
 msgid "Could not write the summary"
 msgstr ""
 
-#: app/src/window.rs:1690
+#: app/src/window.rs:1713
 msgid ""
 "On this computer, nothing leaves it. Claude and Codex write better "
 "summaries, quicker, through your own account: the transcript and your notes "
 "are then sent to Anthropic or OpenAI."
 msgstr ""
 
-#: app/src/window.rs:1694
+#: app/src/window.rs:1717
 msgid "Write a Summary After Each Meeting"
 msgstr ""
 
-#: app/src/window.rs:1699
+#: app/src/window.rs:1722
 msgid "Written By"
 msgstr ""
 
-#: app/src/window.rs:1768
+#: app/src/window.rs:1791
 msgid "Rename Meeting"
 msgstr ""
 
-#: app/src/window.rs:1775
+#: app/src/window.rs:1798
 msgid "_Rename"
 msgstr ""
 
-#: app/src/window.rs:1815
+#: app/src/window.rs:1839
 msgid "Wait for the summary to be written before renaming"
 msgstr ""
 
-#: app/src/window.rs:1826
+#: app/src/window.rs:1851
 msgid "Could not rename the meeting"
 msgstr ""
 
-#: app/src/window.rs:1838
+#: app/src/window.rs:1863
 msgid "Delete This Meeting?"
 msgstr ""
 
-#: app/src/window.rs:1840
+#: app/src/window.rs:1865
 msgid ""
 "“%s” goes to the trash with its recording, transcript, summary and notes. It "
 "can be restored from there."
 msgstr ""
 
-#: app/src/window.rs:1880
+#: app/src/window.rs:1905
 msgid "Meeting moved to the trash"
 msgstr ""
 
-#: app/src/window.rs:1884
+#: app/src/window.rs:1909
 msgid "Could not move the meeting to the trash"
 msgstr ""
 
-#: app/src/window.rs:1932
+#: app/src/window.rs:1957
 msgid "Your Notes"
 msgstr ""
 
-#: app/src/window.rs:1959
+#: app/src/window.rs:1984
 msgid "This Computer"
 msgstr ""
 
-#: app/src/window.rs:1960
+#: app/src/window.rs:1985
 msgid "Claude (claude -p)"
 msgstr ""
 
-#: app/src/window.rs:1961
+#: app/src/window.rs:1986
 msgid "Codex (codex exec)"
 msgstr ""
 
-#: app/src/window.rs:1971
+#: app/src/window.rs:1996
 msgid "Written by Claude, from the transcript sent to Anthropic"
 msgstr ""
 
-#: app/src/window.rs:1974
+#: app/src/window.rs:1999
 msgid "Written by Codex, from the transcript sent to OpenAI"
 msgstr ""
 
-#: app/src/window.rs:1976
+#: app/src/window.rs:2001
 msgid "Written on this computer"
 msgstr ""
 
-#: app/src/window.rs:1991
+#: app/src/window.rs:2016
 msgid "Write Again With"
 msgstr ""
 
-#: app/src/window.rs:2116
+#: app/src/window.rs:2141
 msgid "Writing the summary"
 msgstr ""
 
-#: app/src/window.rs:2117
+#: app/src/window.rs:2142
 msgid "Downloading llama.cpp"
 msgstr ""
 
-#: app/src/window.rs:2118
+#: app/src/window.rs:2143
 msgid "Downloading the summary model"
 msgstr ""
 
-#: app/src/window.rs:2119
+#: app/src/window.rs:2144
 msgid "Loading the audio"
 msgstr ""
 
-#: app/src/window.rs:2120
+#: app/src/window.rs:2145
 msgid "Telling the voices apart"
 msgstr ""
 
-#: app/src/window.rs:2121
+#: app/src/window.rs:2146
 msgid "Loading the speech model"
 msgstr ""
 
-#: app/src/window.rs:2122
+#: app/src/window.rs:2147
 msgid "Transcribing"
 msgstr ""
 
-#: app/src/window.rs:2123
+#: app/src/window.rs:2148
 msgid "Downloading the speech model"
 msgstr ""
 
-#: app/src/window.rs:2124
+#: app/src/window.rs:2149
 msgid "Downloading the speaker model"
 msgstr ""
 
-#: app/src/window.rs:2131
+#: app/src/window.rs:2156
 msgid "Detect Automatically"
 msgstr ""
 
-#: app/src/window.rs:2132
+#: app/src/window.rs:2157
 msgid "English"
 msgstr ""
 
-#: app/src/window.rs:2133
+#: app/src/window.rs:2158
 msgid "French"
 msgstr ""
 
-#: app/src/window.rs:2134
+#: app/src/window.rs:2159
 msgid "Dutch"
 msgstr ""
 
-#: app/src/window.rs:2135
+#: app/src/window.rs:2160
 msgid "German"
 msgstr ""
 
-#: app/src/window.rs:2136
+#: app/src/window.rs:2161
 msgid "Spanish"
 msgstr ""
 
-#: app/src/window.rs:2137
+#: app/src/window.rs:2162
 msgid "Italian"
 msgstr ""
 
-#: app/src/window.rs:2138
+#: app/src/window.rs:2163
 msgid "Portuguese"
 msgstr ""
 

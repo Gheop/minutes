@@ -1057,6 +1057,36 @@ fn gpu_device() -> i32 {
     0
 }
 
+/// What whisper runs on, as the system names it: the GPU `gpu_device`
+/// picks, or None on the processor.
+pub fn device_name() -> Option<String> {
+    use whisper_rs::whisper_rs_sys as ggml;
+    if !cfg!(any(feature = "vulkan", feature = "cuda")) {
+        return None;
+    }
+    let mut first = None;
+    // SAFETY: as in `gpu_device`; the descriptions are C strings ggml keeps
+    // for as long as the process runs.
+    unsafe {
+        for i in 0..ggml::ggml_backend_dev_count() {
+            let device = ggml::ggml_backend_dev_get(i);
+            let kind = ggml::ggml_backend_dev_type(device);
+            let integrated = kind == ggml::ggml_backend_dev_type_GGML_BACKEND_DEVICE_TYPE_IGPU;
+            if kind != ggml::ggml_backend_dev_type_GGML_BACKEND_DEVICE_TYPE_GPU && !integrated {
+                continue;
+            }
+            let name = std::ffi::CStr::from_ptr(ggml::ggml_backend_dev_description(device))
+                .to_string_lossy()
+                .into_owned();
+            if !integrated {
+                return Some(name);
+            }
+            first.get_or_insert(name);
+        }
+    }
+    first
+}
+
 /// The Vulkan device whisper runs on, as llama.cpp numbers it too: both take
 /// ggml's list of devices. None in the other builds.
 pub(crate) fn vulkan_device() -> Option<i32> {

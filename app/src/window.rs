@@ -1376,6 +1376,9 @@ impl MinutesWindow {
         imp.drafts.borrow_mut().clear();
         imp.live_list.remove_all();
         imp.live_group.set_visible(false);
+        imp.live_group.set_description(Some(&gettext(
+            "Written as the call goes on; the transcript made at the end is better",
+        )));
         *imp.preview_file.borrow_mut() = None;
         let (tx, rx) = async_channel::unbounded::<Update>();
         *imp.preview.borrow_mut() = Some(Preview::start(staging, language, tx));
@@ -1393,6 +1396,7 @@ impl MinutesWindow {
                         text,
                         ..
                     } => win.set_draft(speaker, start_ms, text),
+                    Update::Slow { device } => win.show_slow(device),
                 }
             }
         });
@@ -1418,6 +1422,25 @@ impl MinutesWindow {
         }
         imp.live.borrow_mut().extend(lines);
         self.live_changed();
+    }
+
+    /// Says the preview cannot keep up, and what whisper runs on: most often
+    /// the integrated GPU or the processor because the usual GPU is missing.
+    fn show_slow(&self, device: Option<String>) {
+        let imp = self.imp();
+        let text = match device {
+            Some(device) => gettext(
+                "Behind the call: whisper runs on {device}, slower than people speak. \
+                 After a graphics driver update, restart the computer to get the usual GPU back.",
+            )
+            .replace("{device}", &device),
+            None => gettext(
+                "Behind the call: whisper runs on the processor, slower than people speak. \
+                 After a graphics driver update, restart the computer to get the GPU back.",
+            ),
+        };
+        imp.live_group.set_description(Some(&text));
+        imp.live_group.set_visible(true);
     }
 
     /// Shows what is being said on one side, greyed, until it is done; empty
