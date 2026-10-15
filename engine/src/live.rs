@@ -52,6 +52,10 @@ const SETTLED: usize = WHISPER_RATE * 4 / 5;
 /// Someone talking on without a pause: a stretch still going is cut once it
 /// is this long, at its quietest moment, rather than waited for.
 const LONG: usize = WHISPER_RATE * 5;
+/// The preview this far behind the call means whisper runs slower than
+/// people speak: on a GPU too small, or on the processor when the usual GPU
+/// went missing, as after a driver update until the computer restarts.
+const TOO_SLOW: Duration = Duration::from_secs(30);
 /// How often the preview looks at what has been recorded.
 const TICK: Duration = Duration::from_millis(500);
 /// How much before where the transcription is up to the stretches are looked
@@ -72,6 +76,9 @@ pub enum Update {
         heard_ms: i64,
         text: String,
     },
+    /// Whisper cannot keep up with the call on `device`, the GPU it runs on,
+    /// or None for the processor. Sent once.
+    Slow { device: Option<String> },
 }
 
 /// The preview of one recording, running in its own thread.
@@ -204,6 +211,7 @@ fn run(
     let mut ahead = aligned.then(Ahead::default);
     let mut tick = 0u64;
     let mut next = Instant::now();
+    let mut told_slow = false;
     while !stop.load(Ordering::Relaxed) {
         tick += 1;
         // Twice a second: whisper gets a stretch a second or so after it ends.
@@ -287,7 +295,8 @@ fn run(
                 }
                 continue;
             }
-            match preview_pass(
+            let pass = Instant::now();
+            let passed = preview_pass(
                 &context,
                 track,
                 from,
@@ -296,7 +305,22 @@ fn run(
                 language,
                 &earlier[side],
                 stop,
-            ) {
+            );
+            let end = ready.last().map_or(heard, |r| r.end);
+            let behind =
+                Duration::from_secs_f64(heard.saturating_sub(end) as f64 / WHISPER_RATE as f64)
+                    + pass.elapsed();
+            if !told_slow && behind > TOO_SLOW {
+                told_slow = true;
+                let device = crate::transcribe::device_name();
+                crate::warn(format!(
+                    "the preview is {} s behind the call on {}",
+                    behind.as_secs(),
+                    device.as_deref().unwrap_or("the processor")
+                ));
+                let _ = updates.send_blocking(Update::Slow { device });
+            }
+            match passed {
                 Ok(new) => {
                     // Whisper sometimes gives back its prompt, the text just
                     // before, for a short stretch: a line said again word for
@@ -491,7 +515,8 @@ mod tests {
         let (mic_path, computer_path) = crate::session::raw_tracks(&staging);
         let (tx, rx) = async_channel::unbounded();
         let started = std::time::Instant::now();
-        let preview = Preview::start(&staging, "en", tx);
+        let language = std::env::var("MINUTES_PREVIEW_LANGUAGE").unwrap_or_else(|_| "en".into());
+        let preview = Preview::start(&staging, &language, tx);
         // A tenth of a second of audio at a time, ten times faster than the
         // call, or at its pace with MINUTES_PREVIEW_SPEED=1: the recorder
         // writes every 40 to 60 ms (its buffer holds two or three 20 ms
@@ -536,6 +561,10 @@ mod tests {
                         }
                         continue;
                     }
+                    Update::Slow { device } => {
+                        println!("behind the call, on {device:?}");
+                        continue;
+                    }
                 };
                 for line in lines {
                     // Seconds of audio written since the line ended, in the call's own time.
@@ -555,7 +584,7 @@ mod tests {
         std::thread::sleep(std::time::Duration::from_secs(8));
         let lines = preview.finish();
         println!("{} lines in all", lines.len());
-        if let Some(ahead) = ahead_in(&staging, "en") {
+        if let Some(ahead) = ahead_in(&staging, &language) {
             println!("transcribed for the transcript: {}", ahead.summary());
         }
         if !draft_ages.is_empty() {

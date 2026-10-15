@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: minutes\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-13 13:06+0200\n"
+"POT-Creation-Date: 2026-10-15 17:25+0200\n"
 "PO-Revision-Date: 2026-09-26 08:05+0200\n"
 "Last-Translator: Automatically generated\n"
 "Language-Team: none\n"
@@ -143,7 +143,7 @@ msgstr "Quelques mots sur ce qui compte pour vous : le compte rendu part de là"
 msgid "Preview"
 msgstr "Aperçu"
 
-#: app/src/window.ui:346
+#: app/src/window.ui:346 app/src/window.rs:1380
 msgid "Written as the call goes on; the transcript made at the end is better"
 msgstr "Écrit pendant l’appel ; la transcription faite à la fin est meilleure"
 
@@ -167,12 +167,12 @@ msgstr "Copier l’aperçu"
 msgid "Open the Preview"
 msgstr "Ouvrir l’aperçu"
 
-#: app/src/window.ui:434 app/src/window.ui:524 app/src/window.rs:1774
-#: app/src/window.rs:1847
+#: app/src/window.ui:434 app/src/window.ui:524 app/src/window.rs:1797
+#: app/src/window.rs:1872
 msgid "_Cancel"
 msgstr "_Annuler"
 
-#: app/src/window.ui:471 app/src/window.rs:1688
+#: app/src/window.ui:471 app/src/window.rs:1711
 msgid "Summary"
 msgstr "Compte rendu"
 
@@ -279,7 +279,7 @@ msgstr "Récupérer l’enregistrement interrompu ?"
 msgid "_Later"
 msgstr "_Plus tard"
 
-#: app/src/window.rs:739 app/src/window.rs:1848
+#: app/src/window.rs:739 app/src/window.rs:1873
 msgid "_Delete"
 msgstr "_Supprimer"
 
@@ -375,27 +375,46 @@ msgstr "Les autres"
 msgid "_Unmute My Microphone"
 msgstr "_Rétablir mon micro"
 
-#: app/src/window.rs:1514
+#: app/src/window.rs:1433
+#, rust-format
+msgid ""
+"Behind the call: whisper runs on {device}, slower than people speak. After a "
+"graphics driver update, restart the computer to get the usual GPU back."
+msgstr ""
+"En retard sur l’appel : whisper tourne sur {device}, moins vite que la "
+"parole. Après une mise à jour du pilote graphique, redémarrez l’ordinateur "
+"pour retrouver le GPU habituel."
+
+#: app/src/window.rs:1438
+msgid ""
+"Behind the call: whisper runs on the processor, slower than people speak. "
+"After a graphics driver update, restart the computer to get the GPU back."
+msgstr ""
+"En retard sur l’appel : whisper tourne sur le processeur, moins vite que la "
+"parole. Après une mise à jour du pilote graphique, redémarrez l’ordinateur "
+"pour retrouver le GPU."
+
+#: app/src/window.rs:1537
 msgid "preview"
 msgstr "aperçu"
 
-#: app/src/window.rs:1528
+#: app/src/window.rs:1551
 msgid "Preview copied"
 msgstr "Aperçu copié"
 
-#: app/src/window.rs:1552
+#: app/src/window.rs:1575
 msgid "Transcript ready"
 msgstr "Transcription prête"
 
-#: app/src/window.rs:1571
+#: app/src/window.rs:1594
 msgid "Summary copied"
 msgstr "Compte rendu copié"
 
-#: app/src/window.rs:1575
+#: app/src/window.rs:1598
 msgid "Transcript copied"
 msgstr "Transcription copiée"
 
-#: app/src/window.rs:1607
+#: app/src/window.rs:1630
 msgid ""
 "Decisions, action items and open questions, written from the transcript and "
 "your notes on this computer."
@@ -403,7 +422,7 @@ msgstr ""
 "Décisions, actions et questions ouvertes, rédigées à partir de la "
 "transcription et de vos notes, sur cet ordinateur."
 
-#: app/src/window.rs:1608
+#: app/src/window.rs:1631
 msgid ""
 "Decisions, action items and open questions, written from the transcript and "
 "your notes on this computer. The first time, Minutes downloads the model "
@@ -413,7 +432,7 @@ msgstr ""
 "transcription et de vos notes, sur cet ordinateur. La première fois, Minutes "
 "télécharge le modèle qui les rédige : %d Mo."
 
-#: app/src/window.rs:1610
+#: app/src/window.rs:1633
 msgid ""
 "Decisions, action items and open questions, written by Claude from the "
 "transcript and your notes, which are sent to Anthropic."
@@ -421,7 +440,7 @@ msgstr ""
 "Décisions, actions et questions ouvertes, rédigées par Claude à partir de la "
 "transcription et de vos notes, qui sont envoyées à Anthropic."
 
-#: app/src/window.rs:1611
+#: app/src/window.rs:1634
 msgid ""
 "Decisions, action items and open questions, written by Codex from the "
 "transcript and your notes, which are sent to OpenAI."
@@ -429,11 +448,11 @@ msgstr ""
 "Décisions, actions et questions ouvertes, rédigées par Codex à partir de la "
 "transcription et de vos notes, qui sont envoyées à OpenAI."
 
-#: app/src/window.rs:1675
+#: app/src/window.rs:1698
 msgid "Could not write the summary"
 msgstr "Impossible de rédiger le compte rendu"
 
-#: app/src/window.rs:1690
+#: app/src/window.rs:1713
 msgid ""
 "On this computer, nothing leaves it. Claude and Codex write better "
 "summaries, quicker, through your own account: the transcript and your notes "
@@ -443,35 +462,35 @@ msgstr ""
 "comptes rendus, plus vite, avec votre propre compte : la transcription et "
 "vos notes sont alors envoyées à Anthropic ou à OpenAI."
 
-#: app/src/window.rs:1694
+#: app/src/window.rs:1717
 msgid "Write a Summary After Each Meeting"
 msgstr "Rédiger un compte rendu après chaque réunion"
 
-#: app/src/window.rs:1699
+#: app/src/window.rs:1722
 msgid "Written By"
 msgstr "Rédigé par"
 
-#: app/src/window.rs:1768
+#: app/src/window.rs:1791
 msgid "Rename Meeting"
 msgstr "Renommer la réunion"
 
-#: app/src/window.rs:1775
+#: app/src/window.rs:1798
 msgid "_Rename"
 msgstr "_Renommer"
 
-#: app/src/window.rs:1815
+#: app/src/window.rs:1839
 msgid "Wait for the summary to be written before renaming"
 msgstr "Attendez la fin du compte rendu pour renommer"
 
-#: app/src/window.rs:1826
+#: app/src/window.rs:1851
 msgid "Could not rename the meeting"
 msgstr "Impossible de renommer la réunion"
 
-#: app/src/window.rs:1838
+#: app/src/window.rs:1863
 msgid "Delete This Meeting?"
 msgstr "Supprimer cette réunion ?"
 
-#: app/src/window.rs:1840
+#: app/src/window.rs:1865
 msgid ""
 "“%s” goes to the trash with its recording, transcript, summary and notes. It "
 "can be restored from there."
@@ -479,111 +498,111 @@ msgstr ""
 "« %s » part à la corbeille avec son enregistrement, sa transcription, son "
 "compte rendu et ses notes. Elle peut en être restaurée."
 
-#: app/src/window.rs:1880
+#: app/src/window.rs:1905
 msgid "Meeting moved to the trash"
 msgstr "Réunion mise à la corbeille"
 
-#: app/src/window.rs:1884
+#: app/src/window.rs:1909
 msgid "Could not move the meeting to the trash"
 msgstr "Impossible de mettre la réunion à la corbeille"
 
-#: app/src/window.rs:1932
+#: app/src/window.rs:1957
 msgid "Your Notes"
 msgstr "Vos notes"
 
-#: app/src/window.rs:1959
+#: app/src/window.rs:1984
 msgid "This Computer"
 msgstr "Cet ordinateur"
 
-#: app/src/window.rs:1960
+#: app/src/window.rs:1985
 msgid "Claude (claude -p)"
 msgstr "Claude (claude -p)"
 
-#: app/src/window.rs:1961
+#: app/src/window.rs:1986
 msgid "Codex (codex exec)"
 msgstr "Codex (codex exec)"
 
-#: app/src/window.rs:1971
+#: app/src/window.rs:1996
 msgid "Written by Claude, from the transcript sent to Anthropic"
 msgstr "Rédigé par Claude, à partir de la transcription envoyée à Anthropic"
 
-#: app/src/window.rs:1974
+#: app/src/window.rs:1999
 msgid "Written by Codex, from the transcript sent to OpenAI"
 msgstr "Rédigé par Codex, à partir de la transcription envoyée à OpenAI"
 
-#: app/src/window.rs:1976
+#: app/src/window.rs:2001
 msgid "Written on this computer"
 msgstr "Rédigé sur cet ordinateur"
 
-#: app/src/window.rs:1991
+#: app/src/window.rs:2016
 msgid "Write Again With"
 msgstr "Réécrire avec"
 
-#: app/src/window.rs:2116
+#: app/src/window.rs:2141
 msgid "Writing the summary"
 msgstr "Rédaction du compte rendu"
 
-#: app/src/window.rs:2117
+#: app/src/window.rs:2142
 msgid "Downloading llama.cpp"
 msgstr "Téléchargement de llama.cpp"
 
-#: app/src/window.rs:2118
+#: app/src/window.rs:2143
 msgid "Downloading the summary model"
 msgstr "Téléchargement du modèle de compte rendu"
 
-#: app/src/window.rs:2119
+#: app/src/window.rs:2144
 msgid "Loading the audio"
 msgstr "Chargement de l’audio"
 
-#: app/src/window.rs:2120
+#: app/src/window.rs:2145
 msgid "Telling the voices apart"
 msgstr "Distinction des voix"
 
-#: app/src/window.rs:2121
+#: app/src/window.rs:2146
 msgid "Loading the speech model"
 msgstr "Chargement du modèle vocal"
 
-#: app/src/window.rs:2122
+#: app/src/window.rs:2147
 msgid "Transcribing"
 msgstr "Transcription"
 
-#: app/src/window.rs:2123
+#: app/src/window.rs:2148
 msgid "Downloading the speech model"
 msgstr "Téléchargement du modèle vocal"
 
-#: app/src/window.rs:2124
+#: app/src/window.rs:2149
 msgid "Downloading the speaker model"
 msgstr "Téléchargement du modèle des voix"
 
-#: app/src/window.rs:2131
+#: app/src/window.rs:2156
 msgid "Detect Automatically"
 msgstr "Détection automatique"
 
-#: app/src/window.rs:2132
+#: app/src/window.rs:2157
 msgid "English"
 msgstr "Anglais"
 
-#: app/src/window.rs:2133
+#: app/src/window.rs:2158
 msgid "French"
 msgstr "Français"
 
-#: app/src/window.rs:2134
+#: app/src/window.rs:2159
 msgid "Dutch"
 msgstr "Néerlandais"
 
-#: app/src/window.rs:2135
+#: app/src/window.rs:2160
 msgid "German"
 msgstr "Allemand"
 
-#: app/src/window.rs:2136
+#: app/src/window.rs:2161
 msgid "Spanish"
 msgstr "Espagnol"
 
-#: app/src/window.rs:2137
+#: app/src/window.rs:2162
 msgid "Italian"
 msgstr "Italien"
 
-#: app/src/window.rs:2138
+#: app/src/window.rs:2163
 msgid "Portuguese"
 msgstr "Portugais"
 

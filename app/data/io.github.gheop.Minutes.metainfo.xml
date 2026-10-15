@@ -25,6 +25,11 @@
     <control>pointing</control>
   </supports>
   <releases>
+    <release version="0.16.2" date="2026-10-15">
+      <description>
+        <p>When the preview falls behind the call, the window says which GPU whisper runs on.</p>
+      </description>
+    </release>
     <release version="0.16.1" date="2026-10-15">
       <description>
         <p>After Stop, the transcript starts at once while the audio is saved alongside it.</p>

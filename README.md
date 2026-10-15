@@ -189,6 +189,10 @@ MIT, like the project it comes from. See [LICENSE](LICENSE).
 
 ## Changelog
 
+### v0.16.2 — Saying when the preview falls behind (2026-10-15)
+
+- When the preview is more than 30 s behind the call, the window says what whisper runs on: most often the integrated GPU or the processor because the usual GPU went missing, as after a graphics driver update until the computer restarts
+
 ### v0.16.1 — Transcript right after Stop (2026-10-15)
 
 - After Stop, the transcript starts at once: the audio is saved alongside it, its files encoded side by side, where a 1 h 40 call used to wait 4 min first
@@ -352,6 +356,7 @@ MIT, like the project it comes from. See [LICENSE](LICENSE).
 
 | Version | Date       | Changes                                                       |
 |---------|------------|---------------------------------------------------------------|
+| 1.3.2   | 2026-10-15 | Add the v0.16.2 changelog entry                               |
 | 1.3.1   | 2026-10-15 | Add the v0.16.1 changelog entry                               |
 | 1.3.0   | 2026-10-13 | Add renaming a meeting                                        |
 | 1.2.0   | 2026-10-13 | Add summaries by Claude or Codex and deleting a meeting       |
