@@ -194,15 +194,16 @@ pub fn rename(dir: &Path, title: &str) -> Result<PathBuf, String> {
 pub fn save_audio(staging: &Path, out: &Path, format: Format) -> (bool, bool) {
     let _ = private_dir(out.parent().unwrap_or(out), out);
     let (mic, system) = raw_tracks(staging);
-    (
-        export_audio(&mic, &system, out, format),
-        export_tracks(&mic, &system, out),
-    )
+    std::thread::scope(|scope| {
+        let tracks = scope.spawn(|| export_tracks(&mic, &system, out));
+        let audio = export_audio(&mic, &system, out, format);
+        (audio, tracks.join().unwrap_or(false))
+    })
 }
 
 /// Everything after Stop for the recording in `staging`: its audio kept in
-/// the meeting folder `out`, then its transcript, with the two sides called
-/// `speakers`. The raw files go once the audio and the tracks are kept, even
+/// the meeting folder `out` while its transcript is made, with the two sides
+/// called `speakers`. The raw files go once the audio and the tracks are kept, even
 /// if the transcript fails: it can be made again from the tracks. Blocking:
 /// run it off the main thread; `events` tells how far it is.
 pub fn write_up(
@@ -214,7 +215,10 @@ pub fn write_up(
     abort: &crate::transcribe::Abort,
 ) -> Result<(), String> {
     crate::glossary::set_names(&note.names);
-    let saved = save_audio(staging, out, note.format);
+    let (mic, system) = raw_tracks(staging);
+    // Evened up before the audio and the transcript both read them.
+    crate::export::even_up(&mic, &system);
+    let _ = private_dir(out.parent().unwrap_or(out), out);
     if let Some(text) = notes(staging)
         && let Err(e) = std::fs::write(out.join(NOTES), text)
     {
@@ -240,7 +244,13 @@ pub fn write_up(
     if let Err(e) = meeting::write(out, &manifest) {
         crate::warn(format!("could not write {}: {e}", out.display()));
     }
-    let result = transcribe_into(staging, out, &mut manifest, &note.language, events, abort);
+    // The transcript reads the raw files, not the audio being encoded: the
+    // two go side by side, and the raw files stay until both are done.
+    let (saved, result) = std::thread::scope(|scope| {
+        let saving = scope.spawn(|| save_audio(staging, out, note.format));
+        let result = transcribe_into(staging, out, &mut manifest, &note.language, events, abort);
+        (saving.join().unwrap_or((false, false)), result)
+    });
     if saved == (true, true) {
         let _ = std::fs::remove_dir_all(staging);
     }

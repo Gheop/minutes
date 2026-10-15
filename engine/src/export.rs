@@ -51,6 +51,18 @@ impl Format {
 }
 
 /// Appends silence so both tracks are equally long and stay aligned at the end.
+/// Makes both raw tracks exist and last as long as each other, as everything
+/// read from them after Stop expects. False when they could not be.
+pub fn even_up(mic_raw: &Path, system_raw: &Path) -> bool {
+    [mic_raw, system_raw].iter().all(|path| {
+        OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+            .is_ok()
+    }) && pad_to_same_length([mic_raw, system_raw]).is_ok()
+}
+
 fn pad_to_same_length(paths: [&Path; 2]) -> std::io::Result<()> {
     let sizes = [
         std::fs::metadata(paths[0])?.len(),
@@ -111,17 +123,7 @@ pub fn speech_gain_db(raw: &Path) -> f64 {
 /// Each track is levelled on its own first, so a quiet side is as easy to hear
 /// as a loud one.
 pub fn export_audio(mic_raw: &Path, system_raw: &Path, out: &Path, format: Format) -> bool {
-    for path in [mic_raw, system_raw] {
-        if OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(path)
-            .is_err()
-        {
-            return false;
-        }
-    }
-    if pad_to_same_length([mic_raw, system_raw]).is_err() {
+    if !even_up(mic_raw, system_raw) {
         return false;
     }
     if std::fs::metadata(mic_raw).map(|m| m.len()).unwrap_or(0) == 0 {
@@ -194,13 +196,20 @@ pub fn export_audio(mic_raw: &Path, system_raw: &Path, out: &Path, format: Forma
         ],
     };
 
-    jobs.iter().all(|args| {
-        Command::new("ffmpeg")
-            .args(["-y", "-loglevel", "error"])
-            .args(args)
-            .status()
-            .map(|s| s.success())
-            .unwrap_or(false)
+    run_all(jobs.iter().map(|args| {
+        let mut command = Command::new("ffmpeg");
+        command.args(["-y", "-loglevel", "error"]).args(args);
+        command
+    }))
+}
+
+/// Runs the encoders side by side, each on its own core: one at a time took
+/// 4 min after a 1 h 40 call. True when all of them succeeded.
+fn run_all(commands: impl Iterator<Item = Command>) -> bool {
+    let children: Vec<_> = commands.map(|mut command| command.spawn()).collect();
+    children.into_iter().fold(true, |ok, child| {
+        let done = child.and_then(|mut child| child.wait());
+        ok && done.is_ok_and(|status| status.success())
     })
 }
 
@@ -221,29 +230,30 @@ pub fn export_tracks(mic_raw: &Path, system_raw: &Path, meeting_dir: &Path) -> b
         return false;
     }
     let (rate, channels) = (RATE.to_string(), CHANNELS.to_string());
-    [(mic_raw, mic), (system_raw, computer)]
-        .iter()
-        .all(|(raw, target)| {
-            Command::new("ffmpeg")
-                .args([
-                    "-y",
-                    "-loglevel",
-                    "error",
-                    "-f",
-                    "s16le",
-                    "-ar",
-                    &rate,
-                    "-ac",
-                    &channels,
-                    "-i",
-                ])
-                .arg(raw)
-                .args(["-ac", "1", "-c:a", "libopus", "-b:a", "48k"])
-                .arg(target)
-                .status()
-                .map(|s| s.success())
-                .unwrap_or(false)
-        })
+    run_all(
+        [(mic_raw, mic), (system_raw, computer)]
+            .into_iter()
+            .map(|(raw, target)| {
+                let mut command = Command::new("ffmpeg");
+                command
+                    .args([
+                        "-y",
+                        "-loglevel",
+                        "error",
+                        "-f",
+                        "s16le",
+                        "-ar",
+                        &rate,
+                        "-ac",
+                        &channels,
+                        "-i",
+                    ])
+                    .arg(raw)
+                    .args(["-ac", "1", "-c:a", "libopus", "-b:a", "48k"])
+                    .arg(target);
+                command
+            }),
+    )
 }
 
 fn strings(items: &[&str]) -> Vec<String> {
