@@ -189,6 +189,10 @@ MIT, like the project it comes from. See [LICENSE](LICENSE).
 
 ## Changelog
 
+### v0.16.1 — Transcript right after Stop (2026-10-15)
+
+- After Stop, the transcript starts at once: the audio is saved alongside it, its files encoded side by side, where a 1 h 40 call used to wait 4 min first
+
 ### v0.16.0 — Renaming a meeting (2026-10-13)
 
 - Rename Meeting… in the meeting's menu: the name changes in the list, in the transcript's heading and on the folder, which keeps its date
@@ -348,6 +352,7 @@ MIT, like the project it comes from. See [LICENSE](LICENSE).
 
 | Version | Date       | Changes                                                       |
 |---------|------------|---------------------------------------------------------------|
+| 1.3.1   | 2026-10-15 | Add the v0.16.1 changelog entry                               |
 | 1.3.0   | 2026-10-13 | Add renaming a meeting                                        |
 | 1.2.0   | 2026-10-13 | Add summaries by Claude or Codex and deleting a meeting       |
 | 1.1.0   | 2026-10-13 | Add notes and summary, show English screenshots               |
