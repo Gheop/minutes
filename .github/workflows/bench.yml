@@ -70,21 +70,35 @@ jobs:
           # Nothing here pushes: no token left in the checkout.
           persist-credentials: false
 
+      # A build made by another rustc is of no use: cargo rebuilds everything,
+      # and kept along, its files doubled the cache. Arch updates rust now and
+      # then, so the build is kept per rustc, the downloads whatever it is.
+      - name: Which rustc
+        id: rustc
+        run: echo "version=$(rustc -V | sha256sum | cut -c1-12)" >> "$GITHUB_OUTPUT"
+
       # Restored and saved as separate steps, so a failing build still keeps
       # the downloads for the next run. Cargo.lock changes with every version
       # of Minutes, so the last build whatever its lock file is taken when
       # there is none for this one: cargo then rebuilds only what changed, not
       # whisper.cpp.
-      - name: Restore Cargo and the build
-        id: cargo
+      - name: Restore the Cargo downloads
+        id: downloads
         uses: actions/cache/restore@v6
         with:
           path: |
             /cache/cargo/registry
             /cache/cargo/git
-            target
-          key: cargo-${{ hashFiles('Cargo.lock', '.cargo/config.toml') }}
-          restore-keys: cargo-
+          key: cargo-downloads-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-downloads-
+
+      - name: Restore the build
+        id: build
+        uses: actions/cache/restore@v6
+        with:
+          path: target
+          key: cargo-build-${{ steps.rustc.outputs.version }}-${{ hashFiles('Cargo.lock', '.cargo/config.toml') }}
+          restore-keys: cargo-build-${{ steps.rustc.outputs.version }}-
 
       - name: Format
         run: cargo fmt --all --check
@@ -105,15 +119,21 @@ jobs:
 
       # From main only, once per lock file: pull requests read main's cache,
       # and each push no longer adds a few hundred megabytes of it.
-      - name: Save Cargo and the build
-        if: ${{ always() && github.ref == 'refs/heads/main' && steps.cargo.outputs.cache-hit != 'true' }}
+      - name: Save the Cargo downloads
+        if: ${{ always() && github.ref == 'refs/heads/main' && steps.downloads.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v6
         with:
           path: |
             /cache/cargo/registry
             /cache/cargo/git
-            target
-          key: cargo-${{ hashFiles('Cargo.lock', '.cargo/config.toml') }}
+          key: cargo-downloads-${{ hashFiles('Cargo.lock') }}
+
+      - name: Save the build
+        if: ${{ always() && github.ref == 'refs/heads/main' && steps.build.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v6
+        with:
+          path: target
+          key: cargo-build-${{ steps.rustc.outputs.version }}-${{ hashFiles('Cargo.lock', '.cargo/config.toml') }}
 
       - uses: actions/upload-artifact@v7
         with:
