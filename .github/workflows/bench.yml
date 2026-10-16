@@ -128,18 +128,28 @@ jobs:
             /cache/cargo/git
           key: cargo-downloads-${{ hashFiles('Cargo.lock') }}
 
+      - uses: actions/upload-artifact@v7
+        with:
+          name: bench-binary
+          path: target/release/minutes
+          retention-days: 1
+
+      # Only the dependencies are worth keeping: Minutes' own crates are
+      # rebuilt for each version, and the files of the earlier ones made the
+      # cache grow from 347 to 549 MiB in a week.
+      - name: Leave out Minutes' own build
+        if: ${{ always() && github.ref == 'refs/heads/main' && steps.build.outputs.cache-hit != 'true' }}
+        run: |
+          rm -rf target/release/incremental target/release/minutes target/release/minutes.d
+          rm -rf target/release/deps/minutes* target/release/deps/libminutes* \
+            target/release/.fingerprint/minutes* target/release/build/minutes*
+
       - name: Save the build
         if: ${{ always() && github.ref == 'refs/heads/main' && steps.build.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v6
         with:
           path: target
           key: cargo-build-${{ steps.rustc.outputs.version }}-${{ hashFiles('Cargo.lock', '.cargo/config.toml') }}
-
-      - uses: actions/upload-artifact@v7
-        with:
-          name: bench-binary
-          path: target/release/minutes
-          retention-days: 1
 
   bench:
     needs: build
