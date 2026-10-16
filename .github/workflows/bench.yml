@@ -3,7 +3,8 @@ name: Bench
 # Builds the app on Arch (libadwaita 1.6 is newer than Ubuntu has), runs the
 # unit tests and the bench, including the first minutes of a real AMI meeting,
 # and fails when a case scores below bench/thresholds.json. The bench runs in
-# two halves side by side: the AMI meeting, and the synthetic cases. The scores
+# three parts side by side, each with about as much to transcribe: the slowest
+# case alone made one part the longest job of the run. The scores
 # are kept as an artifact; "Bench comment" posts them on the pull request, also
 # for pull requests from forks, which may not write to this repository.
 
@@ -126,14 +127,19 @@ jobs:
     container: archlinux:latest
     timeout-minutes: 30
     strategy:
-      # Both halves report even when one falls below its thresholds.
+      # Every part reports even when one falls below its thresholds.
       fail-fast: false
       matrix:
+        # Seconds each takes on the runner: ami-ES2004a-call 117,
+        # ami-ES2004a-import 96, call and call-speakers 52, import 47, room 32,
+        # music 16, and the write-up 54.
         include:
-          - half: ami
-            cases: --ami --case ami-ES2004a-import ami-ES2004a-call
+          - half: ami-call
+            cases: --ami --case ami-ES2004a-call music room silence
+          - half: ami-import
+            cases: --ami --case ami-ES2004a-import call
           - half: synthetic
-            cases: --case call call-speakers import music room silence
+            cases: --case call-speakers import
     env:
       # The app keeps its models under $XDG_DATA_HOME; a fixed path to cache.
       XDG_DATA_HOME: /cache/data
@@ -173,13 +179,13 @@ jobs:
           python3 bench/run.py $CASES --model small.en --check --json "bench-results-$HALF.json" --keep bench-transcripts | tee bench-table.txt
           { echo '```'; cat bench-table.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
-      # What the app does after Stop, on the synthetic half's call.
+      # What the app does after Stop, on a synthetic call.
       - name: Write up a recording
         if: ${{ matrix.half == 'synthetic' }}
         run: python3 bench/write_up.py --model small.en
 
       - name: Save the models and the AMI meeting
-        if: ${{ always() && matrix.half == 'ami' && steps.models.outputs.cache-hit != 'true' }}
+        if: ${{ always() && matrix.half == 'ami-call' && steps.models.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v6
         with:
           path: |
@@ -198,7 +204,7 @@ jobs:
           # Long enough to look into a regression.
           retention-days: 14
 
-  # The two halves' scores as one table, and for the pull request comment.
+  # The parts' scores as one table, and for the pull request comment.
   scores:
     needs: bench
     if: ${{ always() && needs.bench.result != 'skipped' }}
