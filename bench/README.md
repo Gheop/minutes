@@ -44,7 +44,7 @@ For AMI there is no script, so side and person are measured by who was speaking 
 
 ## In CI
 
-Every pull request and every push to main runs the bench with `--ami --model small.en --check` on GitHub Actions (`.github/workflows/bench.yml`), and fails when a case drops below `thresholds.json`. CI uses the `small.en` whisper model: with the app's default model a run takes over half an hour on GitHub's four cores, and the bench is mostly about who said what, which does not depend on the model. The thresholds sit a few points under the scores with `small.en`, so a different CPU does not fail a run by chance. The scores go into the run's summary, and "Bench comment" posts them on the pull request, also on pull requests from forks. A change that makes the app better can raise the thresholds in the same pull request.
+Every pull request runs the bench with `--ami --model small.en --check` on GitHub Actions (`.github/workflows/bench.yml`), in three jobs side by side, and fails when a case drops below `thresholds.json`. A push to main only builds and tests, as its pull request benched the same code; running the workflow by hand benches main. CI uses the `small.en` whisper model: with the app's default model a run takes over half an hour on GitHub's four cores, and the bench is mostly about who said what, which does not depend on the model. The thresholds sit a few points under the scores with `small.en`, so a different CPU does not fail a run by chance. The scores go into the run's summary, and "Bench comment" posts them on the pull request, also on pull requests from forks. A change that makes the app better can raise the thresholds in the same pull request.
 
 ## Making new cases
 
@@ -59,3 +59,9 @@ A script line is `speaker|gap|text`, where the gap is the seconds after the prev
 ## Licenses
 
 The generated fixtures are CC0. AMI is © the AMI Consortium, [CC BY 4.0](https://groups.inf.ed.ac.uk/ami/corpus/license.shtml); its speaker annotations come from [pyannote/AMI-diarization-setup](https://github.com/pyannote/AMI-diarization-setup). Neither is stored in this repository: `--ami` downloads them to `bench/.cache/`.
+
+## README changelog
+
+| Version | Date       | Changes                                                        |
+|---------|------------|----------------------------------------------------------------|
+| 1.0.0   | 2026-10-16 | Track this document's revisions; bench pull requests, not main |
