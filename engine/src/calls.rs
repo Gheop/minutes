@@ -17,6 +17,10 @@ pub const END_AFTER_SECS: f64 = 15.0;
 /// Programs that record without being a call; Minutes itself runs `parec`.
 const RECORDERS: [&str; 5] = ["parec", "pacat", "pw-record", "pw-cat", "minutes"];
 
+/// Virtual machines open the microphone and the speakers for their guest from
+/// the start, as a call does: by the start of their program's name.
+const VIRTUAL_MACHINES: [&str; 4] = ["qemu-system-", "VirtualBox", "VBoxHeadless", "vmware-vmx"];
+
 /// The apps in a call in a `pw-dump` graph: (key, name to show), sorted by key.
 /// The key is the program; the name, what the app calls itself.
 pub fn calls_in(dump: &serde_json::Value) -> Vec<(String, String)> {
@@ -35,7 +39,11 @@ pub fn calls_in(dump: &serde_json::Value) -> Vec<(String, String)> {
         let class = props["media.class"].as_str().unwrap_or("");
         let name = props["application.name"].as_str().unwrap_or("");
         let binary = props["application.process.binary"].as_str().unwrap_or(name);
-        if binary.is_empty() || RECORDERS.contains(&binary) || RECORDERS.contains(&name) {
+        if binary.is_empty()
+            || RECORDERS.contains(&binary)
+            || RECORDERS.contains(&name)
+            || VIRTUAL_MACHINES.iter().any(|vm| binary.starts_with(vm))
+        {
             continue;
         }
         let app = apps.entry(binary.to_owned()).or_default();
@@ -142,6 +150,22 @@ mod tests {
     #[test]
     fn minutes_recording_on_its_own_is_no_call() {
         assert!(calls_in(&fixture("minutes-only")).is_empty());
+    }
+
+    #[test]
+    fn a_virtual_machine_is_no_call() {
+        let node = |class: &str| {
+            serde_json::json!({
+                "type": "PipeWire:Interface:Node",
+                "info": {"props": {
+                    "media.class": class,
+                    "application.name": "qemu-system-x86_64",
+                    "application.process.binary": "qemu-system-x86_64",
+                }},
+            })
+        };
+        let dump = serde_json::json!([node("Stream/Input/Audio"), node("Stream/Output/Audio")]);
+        assert!(calls_in(&dump).is_empty());
     }
 
     #[test]
