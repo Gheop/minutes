@@ -21,7 +21,9 @@ permissions:
   contents: read
 
 # A new push to a pull request makes its running bench pointless; on main every
-# commit keeps its run.
+# commit keeps its run. On main the bench itself is left out: the pull request
+# benched the same code; main still builds, tests, and keeps the cache that pull
+# requests start from. Run the workflow by hand to bench main.
 concurrency:
   group: bench-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -153,6 +155,7 @@ jobs:
 
   bench:
     needs: build
+    if: ${{ github.event_name != 'push' }}
     runs-on: ubuntu-latest
     container: archlinux:latest
     timeout-minutes: 30
