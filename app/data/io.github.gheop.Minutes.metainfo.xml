@@ -25,6 +25,11 @@
     <control>pointing</control>
   </supports>
   <releases>
+    <release version="0.16.3" date="2026-10-16">
+      <description>
+        <p>A virtual machine is no longer taken for a call.</p>
+      </description>
+    </release>
     <release version="0.16.2" date="2026-10-15">
       <description>
         <p>When the preview falls behind the call, the window says which GPU whisper runs on.</p>

@@ -189,6 +189,10 @@ MIT, like the project it comes from. See [LICENSE](LICENSE).
 
 ## Changelog
 
+### v0.16.3 — Virtual machines are not calls (2026-10-16)
+
+- A virtual machine (QEMU, GNOME Boxes, VirtualBox, VMware) opens the microphone and the speakers for its guest, and was taken for a call: Minutes no longer offers to record it
+
 ### v0.16.2 — Saying when the preview falls behind (2026-10-15)
 
 - When the preview is more than 30 s behind the call, the window says what whisper runs on: most often the integrated GPU or the processor because the usual GPU went missing, as after a graphics driver update until the computer restarts
@@ -356,6 +360,7 @@ MIT, like the project it comes from. See [LICENSE](LICENSE).
 
 | Version | Date       | Changes                                                       |
 |---------|------------|---------------------------------------------------------------|
+| 1.3.3   | 2026-10-16 | Add the v0.16.3 changelog entry                               |
 | 1.3.2   | 2026-10-15 | Add the v0.16.2 changelog entry                               |
 | 1.3.1   | 2026-10-15 | Add the v0.16.1 changelog entry                               |
 | 1.3.0   | 2026-10-13 | Add renaming a meeting                                        |
