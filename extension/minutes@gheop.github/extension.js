@@ -39,7 +39,7 @@ class MinutesIndicator extends PanelMenu.Button {
 
         // The preview written during the call, newest line at the bottom.
         this._previewSection = new PopupMenu.PopupMenuSection();
-        this._previewBox = new St.BoxLayout({vertical: true, style_class: 'minutes-preview'});
+        this._previewBox = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, style_class: 'minutes-preview'});
         this._previewScroll = new St.ScrollView({
             style_class: 'minutes-preview-scroll',
             hscrollbar_policy: St.PolicyType.NEVER,
